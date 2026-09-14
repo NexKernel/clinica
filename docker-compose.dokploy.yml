@@ -17,9 +17,9 @@ services:
       TZ: America/Lima
       TIMEZONE: America/Lima
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-480}
-      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-https://clinica.ose.lat}
+      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-https://satipo.ose.lat}
       # Enlace que reciben los pacientes al compartir un resultado.
-      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-https://clinica.ose.lat}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-https://satipo.ose.lat}
       SHARE_LINK_HOURS: ${SHARE_LINK_HOURS:-72}
       DEFAULT_PHONE_COUNTRY_CODE: ${DEFAULT_PHONE_COUNTRY_CODE:-51}
       MEDIA_DIR: /app/media
@@ -67,14 +67,14 @@ services:
       - traefik.enable=true
       - traefik.docker.network=dokploy-network
       # HTTPS
-      - traefik.http.routers.policlinico-frontend.rule=Host(`clinica.ose.lat`)
+      - traefik.http.routers.policlinico-frontend.rule=Host(`satipo.ose.lat`)
       - traefik.http.routers.policlinico-frontend.entrypoints=websecure
       - traefik.http.routers.policlinico-frontend.tls=true
       - traefik.http.routers.policlinico-frontend.tls.certresolver=letsencrypt
       - traefik.http.routers.policlinico-frontend.service=policlinico-frontend
       - traefik.http.services.policlinico-frontend.loadbalancer.server.port=80
       # HTTP -> HTTPS
-      - traefik.http.routers.policlinico-frontend-web.rule=Host(`clinica.ose.lat`)
+      - traefik.http.routers.policlinico-frontend-web.rule=Host(`satipo.ose.lat`)
       - traefik.http.routers.policlinico-frontend-web.entrypoints=web
       - traefik.http.routers.policlinico-frontend-web.middlewares=policlinico-redirect-https
       - traefik.http.middlewares.policlinico-redirect-https.redirectscheme.scheme=https

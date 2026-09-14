@@ -1,0 +1,94 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Identidad visual Policlínico Estabridis (canales RGB) */
+    --brand-primary: 59 187 172; /* #3BBBAC */
+    --brand-primary-dark: 59 143 136; /* #3B8F88 */
+    --brand-primary-light: 130 208 200; /* #82D0C8 */
+    --brand-accent: 80 203 192; /* #50CBC0 */
+    --brand-background: 247 249 248; /* #F7F9F8 */
+    --brand-surface: 255 255 255; /* #FFFFFF */
+    --brand-foreground: 83 103 100; /* #536764 */
+    --brand-muted: 113 129 126; /* #71817E */
+    --brand-border: 221 237 234; /* #DDEDEA */
+    --brand-success: 59 187 172; /* #3BBBAC */
+    --brand-warning: 232 184 92; /* #E8B85C */
+    --brand-warning-dark: 138 101 32; /* texto sobre fondo warning */
+    --brand-danger: 217 108 108; /* #D96C6C */
+    --brand-info: 93 169 200; /* #5DA9C8 */
+
+    /* Paleta de datos: escalones de marca validados (banda de luminosidad,
+       croma, separación CVD, visión normal y contraste >= 3:1 sobre blanco). */
+    --chart-1: 25 163 147; /* #19a393 turquesa - serie principal */
+    --chart-2: 178 132 45; /* #b2842d ámbar - serie secundaria */
+    --chart-3: 50 157 200; /* #329dc8 azul */
+    --chart-4: 199 79 79; /* #c74f4f rojo */
+
+    /* Colores de la agenda: uno por profesional. Los cuatro primeros son los
+       de la paleta de datos, ya validados; los dos últimos la completan
+       manteniendo la separación de tono. */
+    --cal-1: 25 163 147; /* turquesa */
+    --cal-2: 50 157 200; /* azul */
+    --cal-3: 178 132 45; /* ámbar */
+    --cal-4: 150 106 190; /* violeta */
+    --cal-5: 199 79 79; /* rojo */
+    --cal-6: 74 145 96; /* verde */
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased overflow-x-hidden;
+  }
+
+  h1 {
+    @apply text-2xl font-semibold tracking-tight text-foreground sm:text-[1.75rem];
+  }
+
+  h2 {
+    @apply text-lg font-semibold tracking-tight text-foreground;
+  }
+
+  h3 {
+    @apply text-base font-semibold text-foreground;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-primary/60 ring-offset-2 ring-offset-background;
+  }
+}
+
+@layer utilities {
+  .caption {
+    @apply text-xs font-medium text-muted;
+  }
+
+  /* Altura máxima del panel de un modal. La unidad dvh sigue a la barra de
+     direcciones del móvil; la declaración en vh es la reserva para navegadores
+     que aún no la soportan. */
+  .modal-panel {
+    max-height: 92vh;
+    max-height: 92dvh;
+  }
+
+  @media (min-width: 640px) {
+    .modal-panel {
+      max-height: calc(100vh - 2rem);
+      max-height: calc(100dvh - 2rem);
+    }
+  }
+
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--brand-border)) transparent;
+  }
+}

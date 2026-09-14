@@ -1,0 +1,261 @@
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { CalendarClock, Save } from 'lucide-react'
+
+import {
+  Alert,
+  Button,
+  Input,
+  LoadingState,
+  Modal,
+  Select,
+  Textarea,
+  type SelectOption,
+} from '@/components/ui'
+import {
+  useAppointmentActions,
+  useAvailability,
+} from '@/features/appointments/hooks/useAppointments'
+import { useActivePractitioners, useActiveServices } from '@/features/catalog/hooks/useCatalog'
+import { PatientPicker } from '@/features/patients/components/PatientPicker'
+import { formatTime, fromDateTimeInput, toDateInput, toDateTimeInput } from '@/lib/datetime'
+import { cn } from '@/lib/utils'
+import { getErrorMessage } from '@/services/http'
+import type { Appointment, AppointmentPayload, PatientSummary } from '@/types'
+
+interface AppointmentFormModalProps {
+  open: boolean
+  appointment: Appointment | null
+  /** Paciente preseleccionado al llegar desde otro módulo. */
+  initialPatient?: PatientSummary | null
+  initialDay?: string
+  /** Hora preseleccionada al abrir desde un hueco del calendario. */
+  initialTime?: string
+  onClose: () => void
+}
+
+export function AppointmentFormModal({
+  open,
+  appointment,
+  initialPatient = null,
+  initialDay,
+  initialTime,
+  onClose,
+}: AppointmentFormModalProps) {
+  const isEdit = appointment !== null
+  const { practitioners } = useActivePractitioners()
+  const { services } = useActiveServices()
+  const { create, update } = useAppointmentActions()
+  const isLoading = create.isPending || update.isPending
+
+  const [patient, setPatient] = useState<PatientSummary | null>(null)
+  const [practitionerId, setPractitionerId] = useState('')
+  const [serviceId, setServiceId] = useState('')
+  const [day, setDay] = useState(() => initialDay ?? toDateInput())
+  const [time, setTime] = useState('')
+  const [reason, setReason] = useState('')
+  const [notes, setNotes] = useState('')
+  const [formError, setFormError] = useState<string | null>(null)
+
+  const { availability, isLoading: loadingSlots } = useAvailability(
+    practitionerId ? Number(practitionerId) : null,
+    day,
+  )
+
+  useEffect(() => {
+    if (!open) return
+    setFormError(null)
+
+    if (appointment) {
+      const local = toDateTimeInput(appointment.scheduled_at)
+      setPatient(appointment.patient)
+      setPractitionerId(String(appointment.practitioner_id))
+      setServiceId(appointment.service_id ? String(appointment.service_id) : '')
+      setDay(local.slice(0, 10))
+      setTime(local.slice(11, 16))
+      setReason(appointment.reason ?? '')
+      setNotes(appointment.notes ?? '')
+      return
+    }
+
+    setPatient(initialPatient)
+    setPractitionerId('')
+    setServiceId('')
+    setDay(initialDay ?? toDateInput())
+    setTime(initialTime ?? '')
+    setReason('')
+    setNotes('')
+  }, [open, appointment, initialPatient, initialDay, initialTime])
+
+  const practitionerOptions: SelectOption[] = useMemo(
+    () =>
+      practitioners.map((item) => ({
+        value: String(item.id),
+        label: item.specialty_name ? `${item.full_name} — ${item.specialty_name}` : item.full_name,
+      })),
+    [practitioners],
+  )
+
+  const serviceOptions: SelectOption[] = useMemo(
+    () => services.map((item) => ({ value: String(item.id), label: item.name })),
+    [services],
+  )
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (isLoading) return
+
+    if (!patient) return setFormError('Seleccione el paciente')
+    if (!practitionerId) return setFormError('Seleccione el profesional')
+    if (!day || !time) return setFormError('Indique la fecha y hora de la cita')
+
+    const payload: AppointmentPayload = {
+      patient_id: patient.id,
+      practitioner_id: Number(practitionerId),
+      service_id: serviceId ? Number(serviceId) : null,
+      scheduled_at: fromDateTimeInput(`${day}T${time}`),
+      duration_minutes: null,
+      reason: reason.trim() || null,
+      notes: notes.trim() || null,
+    }
+
+    try {
+      if (appointment) {
+        await update.mutateAsync({ id: appointment.id, payload })
+      } else {
+        await create.mutateAsync(payload)
+      }
+      onClose()
+    } catch (error) {
+      setFormError(getErrorMessage(error, 'No se pudo guardar la cita'))
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={isEdit ? 'Reprogramar cita' : 'Nueva cita'}
+      description={
+        isEdit
+          ? 'Modifique la fecha, el profesional o el motivo de la cita'
+          : 'Programe la atención del paciente según la disponibilidad del profesional'
+      }
+      size="lg"
+      footer={
+        <>
+          <Button variant="ghost" size="sm" disabled={isLoading} onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button
+            type="submit"
+            form="appointment-form"
+            size="sm"
+            isLoading={isLoading}
+            leftIcon={<Save className="h-4 w-4" />}
+          >
+            {isEdit ? 'Guardar cambios' : 'Programar cita'}
+          </Button>
+        </>
+      }
+    >
+      <form id="appointment-form" onSubmit={handleSubmit} noValidate className="space-y-4">
+        {formError && <Alert variant="danger">{formError}</Alert>}
+
+        <PatientPicker value={patient} onChange={setPatient} disabled={isLoading} />
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Select
+            label="Profesional"
+            options={practitionerOptions}
+            placeholder="Seleccione el profesional"
+            value={practitionerId}
+            disabled={isLoading}
+            onChange={(event) => setPractitionerId(event.target.value)}
+          />
+          <Select
+            label="Servicio"
+            options={serviceOptions}
+            placeholder="Sin servicio asociado"
+            value={serviceId}
+            disabled={isLoading}
+            onChange={(event) => setServiceId(event.target.value)}
+          />
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Input
+            label="Fecha"
+            type="date"
+            value={day}
+            disabled={isLoading}
+            onChange={(event) => setDay(event.target.value)}
+          />
+          <Input
+            label="Hora"
+            type="time"
+            value={time}
+            disabled={isLoading}
+            onChange={(event) => setTime(event.target.value)}
+          />
+        </div>
+
+        {practitionerId && (
+          <div className="rounded-xl border border-border bg-background/60 p-3">
+            <p className="caption mb-2 flex items-center gap-1.5 uppercase tracking-wide">
+              <CalendarClock className="h-3.5 w-3.5" />
+              Disponibilidad del día
+            </p>
+
+            {loadingSlots ? (
+              <LoadingState label="Consultando agenda" />
+            ) : !availability?.working ? (
+              <p className="text-sm text-muted">
+                El profesional no tiene horario configurado para esta fecha. Puede indicar la hora
+                manualmente.
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {availability.slots.map((slot) => {
+                  const value = slot.start.slice(11, 16)
+                  const isSelected = value === time
+                  return (
+                    <button
+                      key={slot.start}
+                      type="button"
+                      disabled={!slot.available || isLoading}
+                      title={slot.available ? undefined : (slot.patient_name ?? 'Ocupado')}
+                      onClick={() => setTime(value)}
+                      className={cn(
+                        'rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors',
+                        isSelected && 'bg-primary text-white',
+                        !isSelected && slot.available && 'bg-surface text-foreground hover:bg-primary/10',
+                        !slot.available && 'cursor-not-allowed bg-danger/10 text-danger',
+                      )}
+                    >
+                      {formatTime(slot.start)}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        <Input
+          label="Motivo"
+          placeholder="Control de presión, dolor abdominal…"
+          value={reason}
+          disabled={isLoading}
+          onChange={(event) => setReason(event.target.value)}
+        />
+
+        <Textarea
+          label="Observaciones"
+          value={notes}
+          disabled={isLoading}
+          onChange={(event) => setNotes(event.target.value)}
+        />
+      </form>
+    </Modal>
+  )
+}

@@ -1,0 +1,91 @@
+# Compose para Dokploy. Todo nombre (servicio, red, volumen, router Traefik) lleva
+# el prefijo `policlinico`: el servidor es compartido y en dokploy-network el DNS
+# de Docker resuelve por nombre de servicio en TODAS las redes del contenedor, así
+# que un `backend` genérico haría que el nginx de esta app hablara con el backend
+# de otro stack.
+services:
+  policlinico-backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    environment:
+      # La base de datos es un servicio gestionado de Dokploy, alcanzable por
+      # dokploy-network. El valor real se pega en App -> Environment.
+      DATABASE_URL: ${DATABASE_URL:?Falta DATABASE_URL del servicio Postgres de Dokploy}
+      SECRET_KEY: ${SECRET_KEY:?Falta SECRET_KEY (cadena aleatoria larga)}
+      ENVIRONMENT: production
+      TZ: America/Lima
+      TIMEZONE: America/Lima
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-480}
+      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-https://clinica.ose.lat}
+      # Enlace que reciben los pacientes al compartir un resultado.
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-https://clinica.ose.lat}
+      SHARE_LINK_HOURS: ${SHARE_LINK_HOURS:-72}
+      DEFAULT_PHONE_COUNTRY_CODE: ${DEFAULT_PHONE_COUNTRY_CODE:-51}
+      MEDIA_DIR: /app/media
+      STORAGE_DIR: /app/storage
+      MAX_ATTACHMENT_BYTES: ${MAX_ATTACHMENT_BYTES:-10485760}
+      # Cuenta sembrada en el primer arranque: sin default, para no publicar una
+      # contraseña conocida en un repositorio.
+      FIRST_ADMIN_USERNAME: ${FIRST_ADMIN_USERNAME:-admin}
+      FIRST_ADMIN_EMAIL: ${FIRST_ADMIN_EMAIL:-admin@estabridis.pe}
+      FIRST_ADMIN_PASSWORD: ${FIRST_ADMIN_PASSWORD:?Falta FIRST_ADMIN_PASSWORD del administrador inicial}
+      FIRST_ADMIN_FULL_NAME: ${FIRST_ADMIN_FULL_NAME:-Administrador del Sistema}
+    volumes:
+      - policlinico_storage:/app/storage
+      - policlinico_media:/app/media
+    networks:
+      # dokploy-network para llegar al Postgres gestionado; la interna para nginx.
+      - dokploy-network
+      - policlinico-internal
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 40s
+
+  policlinico-frontend:
+    build:
+      context: ./frontend
+      args:
+        # Se incrusta al compilar: ruta relativa para que el SPA y la API
+        # compartan dominio y nginx haga de proxy.
+        VITE_API_URL: /api/v1
+    restart: unless-stopped
+    depends_on:
+      policlinico-backend:
+        condition: service_healthy
+    networks:
+      - dokploy-network
+      - policlinico-internal
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=dokploy-network
+      # HTTPS
+      - traefik.http.routers.policlinico-frontend.rule=Host(`clinica.ose.lat`)
+      - traefik.http.routers.policlinico-frontend.entrypoints=websecure
+      - traefik.http.routers.policlinico-frontend.tls=true
+      - traefik.http.routers.policlinico-frontend.tls.certresolver=letsencrypt
+      - traefik.http.routers.policlinico-frontend.service=policlinico-frontend
+      - traefik.http.services.policlinico-frontend.loadbalancer.server.port=80
+      # HTTP -> HTTPS
+      - traefik.http.routers.policlinico-frontend-web.rule=Host(`clinica.ose.lat`)
+      - traefik.http.routers.policlinico-frontend-web.entrypoints=web
+      - traefik.http.routers.policlinico-frontend-web.middlewares=policlinico-redirect-https
+      - traefik.http.middlewares.policlinico-redirect-https.redirectscheme.scheme=https
+      - traefik.http.middlewares.policlinico-redirect-https.redirectscheme.permanent=true
+
+networks:
+  dokploy-network:
+    external: true
+  policlinico-internal:
+    driver: bridge
+
+volumes:
+  policlinico_storage:
+  policlinico_media:

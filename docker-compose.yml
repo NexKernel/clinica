@@ -1,0 +1,63 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: policlinico_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-estabridis}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-estabridis}
+      POSTGRES_DB: ${POSTGRES_DB:-estabridis}
+      TZ: America/Lima
+      PGTZ: America/Lima
+    ports:
+      - "5434:5432"
+    volumes:
+      - estabridis_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-estabridis} -d ${POSTGRES_DB:-estabridis}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: ./backend
+    container_name: policlinico_api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-estabridis}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-estabridis}
+      POSTGRES_DB: ${POSTGRES_DB:-estabridis}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      TZ: America/Lima
+      TIMEZONE: America/Lima
+      SECRET_KEY: ${SECRET_KEY:-cambiar-esta-clave-en-produccion}
+      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:5173}
+      SHARE_LINK_HOURS: ${SHARE_LINK_HOURS:-72}
+      # El bind mount viene del sistema de archivos de Windows y no emite
+      # eventos inotify: sin sondeo, el reloader de uvicorn muere con
+      # "WatchfilesRustInternalError: Input/output error (os error 5)".
+      WATCHFILES_FORCE_POLLING: ${WATCHFILES_FORCE_POLLING:-true}
+      WATCHFILES_POLL_DELAY: ${WATCHFILES_POLL_DELAY:-1000}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - estabridis_storage:/app/storage
+      - estabridis_media:/app/media
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      default:
+        # Mismo nombre que en Dokploy: asi el nginx.conf del frontend
+        # (proxy_pass a policlinico-backend) funciona en ambos entornos.
+        aliases:
+          - policlinico-backend
+
+volumes:
+  estabridis_pgdata:
+  estabridis_storage:
+  estabridis_media:

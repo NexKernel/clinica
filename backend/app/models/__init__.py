@@ -38,7 +38,7 @@ from app.models.purchase import (
     SupplierDocumentType,
 )
 from app.models.reminder import Reminder, ReminderChannel, ReminderKind, ReminderStatus
-from app.models.role import ROLE_CATALOG, Role, RoleCode
+from app.models.role import CLINICAL_ROLES, ROLE_CATALOG, Role, RoleCode
 from app.models.sale import (
     DocumentSeries,
     PaymentMethod,
@@ -55,6 +55,7 @@ __all__ = [
     "DOCUMENT_CATALOG",
     "DOCUMENT_FAMILY_LABELS",
     "DOCUMENT_STATUS_LABELS",
+    "CLINICAL_ROLES",
     "ROLE_CATALOG",
     "SETTINGS_ID",
     "Appointment",

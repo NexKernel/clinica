@@ -1,7 +1,7 @@
 from sqlalchemy.orm import Session
 
 from app.core.security import hash_password
-from app.models import Practitioner, Role, RoleCode, User
+from app.models import CLINICAL_ROLES, Practitioner, Role, RoleCode, User
 from app.repositories.practitioner_repository import PractitionerRepository
 from app.repositories.user_repository import RoleRepository, UserRepository
 from app.schemas.user import UserAdminUpdate, UserCreate
@@ -113,17 +113,18 @@ class UserAdminService:
         return self.users.save(user)
 
     def _sync_practitioner(self, user: User) -> None:
-        """Mantiene la ficha de profesional de quien tiene perfil Médico.
+        """Mantiene la ficha de profesional de quien atiende pacientes.
 
-        Sin esto, crear el usuario no bastaba: el médico no figuraba en
+        Sin esto, crear el usuario no bastaba: quien atiende no figuraba en
         Profesionales, así que no aparecía en los selectores de la agenda y no
         se le podían asignar citas hasta darlo de alta a mano por segunda vez.
         """
         practitioner = self.practitioners.get_by_user(user.id)
 
-        if user.role != RoleCode.MEDICO.value:
-            # Al dejar de ser médico se retira de la agenda, pero la ficha se
-            # conserva: las citas y atenciones ya registradas la referencian.
+        if user.role not in CLINICAL_ROLES:
+            # Al pasar a un perfil sin agenda se retira de los selectores, pero
+            # la ficha se conserva: las citas y atenciones ya hechas la
+            # referencian.
             if practitioner is not None and practitioner.is_active:
                 practitioner.is_active = False
                 self.practitioners.save(practitioner)

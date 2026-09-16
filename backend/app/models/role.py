@@ -30,6 +30,19 @@ ROLE_CATALOG: dict[RoleCode, tuple[str, str]] = {
 }
 
 
+# Perfiles que atienden pacientes. Su usuario lleva ficha en Profesionales y
+# figura en los selectores de la agenda y de las atenciones; el resto del
+# personal (administración, recepción, caja, almacén) no tiene agenda propia.
+CLINICAL_ROLES: frozenset[str] = frozenset(
+    {
+        RoleCode.MEDICO.value,
+        RoleCode.ENFERMERIA.value,
+        RoleCode.LABORATORIO.value,
+        RoleCode.OPTOMETRIA.value,
+    }
+)
+
+
 class Role(Base, TimestampMixin):
     __tablename__ = "roles"
 

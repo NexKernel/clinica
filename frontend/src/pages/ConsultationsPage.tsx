@@ -37,6 +37,7 @@ import {
   useEncountersList,
 } from '@/features/encounters/hooks/useEncounters'
 import { useReminderActions } from '@/features/reminders/hooks/useReminders'
+import { useModuleAccess } from '@/hooks/useModuleAccess'
 import { formatDateTime, toDateInput } from '@/lib/datetime'
 import { getErrorMessage } from '@/services/http'
 import type { Encounter, EncounterFilters, EncounterListItem, EncounterStatus } from '@/types'
@@ -68,6 +69,10 @@ export function ConsultationsPage() {
   const [cancelTarget, setCancelTarget] = useState<EncounterListItem | null>(null)
   const [feedback, setFeedback] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null)
 
+  // Quien solo consulta la historia —administración incluida— no debe ver
+  // acciones que la API va a rechazar.
+  const { canManage } = useModuleAccess()
+  const canWrite = canManage('ENCOUNTERS')
   const { practitioners } = useActivePractitioners()
   const { finish, cancel } = useEncounterActions()
   const { fromEncounter } = useReminderActions()
@@ -230,9 +235,9 @@ export function ConsultationsPage() {
                   void openEdit(row)
                 }}
               >
-                {row.status === 'EN_CURSO' ? 'Continuar atención' : 'Ver atención'}
+                {canWrite && row.status === 'EN_CURSO' ? 'Continuar atención' : 'Ver atención'}
               </DropdownItem>
-              {row.status === 'EN_CURSO' && (
+              {canWrite && row.status === 'EN_CURSO' && (
                 <>
                   <DropdownItem
                     icon={<CheckCircle2 className="h-4 w-4" />}
@@ -282,9 +287,11 @@ export function ConsultationsPage() {
         title="Atenciones médicas"
         subtitle="Consultas, diagnósticos, indicaciones y recetas"
         actions={
-          <Button size="sm" leftIcon={<Stethoscope className="h-4 w-4" />} onClick={openCreate}>
-            Nueva atención
-          </Button>
+          canWrite ? (
+            <Button size="sm" leftIcon={<Stethoscope className="h-4 w-4" />} onClick={openCreate}>
+              Nueva atención
+            </Button>
+          ) : null
         }
       />
 
@@ -337,15 +344,21 @@ export function ConsultationsPage() {
             <EmptyState
               icon={FileText}
               title="Sin atenciones en esta fecha"
-              description="Inicie una atención desde la agenda del día o registre una nueva."
+              description={
+                canWrite
+                  ? 'Inicie una atención desde la agenda del día o registre una nueva.'
+                  : 'No hay atenciones registradas en esta fecha.'
+              }
               action={
-                <Button
-                  size="sm"
-                  leftIcon={<Stethoscope className="h-4 w-4" />}
-                  onClick={openCreate}
-                >
-                  Nueva atención
-                </Button>
+                canWrite ? (
+                  <Button
+                    size="sm"
+                    leftIcon={<Stethoscope className="h-4 w-4" />}
+                    onClick={openCreate}
+                  >
+                    Nueva atención
+                  </Button>
+                ) : undefined
               }
             />
           }

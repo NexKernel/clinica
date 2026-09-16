@@ -57,10 +57,22 @@ class ModulePermission:
 
 
 def _module(
-    code: ModuleCode, name: str, view: tuple[RoleCode, ...], manage: tuple[RoleCode, ...]
+    code: ModuleCode,
+    name: str,
+    view: tuple[RoleCode, ...],
+    manage: tuple[RoleCode, ...],
+    *,
+    admin_manages: bool = True,
 ) -> ModulePermission:
-    # El administrador siempre conserva acceso total.
-    return ModulePermission(code, name, (A, *view), (A, *manage))
+    """Declara un módulo. El administrador siempre conserva la consulta.
+
+    Con `admin_manages=False` la conserva *solo* como consulta: es el caso de la
+    historia clínica, donde lo escrito responde a quien atendió al paciente y
+    firma el acto médico. Que el administrador pueda leerla para auditar no lo
+    habilita a modificarla; un registro clínico editable por quien no atendió
+    pierde su valor legal.
+    """
+    return ModulePermission(code, name, (A, *view), (A, *manage) if admin_manages else manage)
 
 
 PERMISSION_MATRIX: dict[ModuleCode, ModulePermission] = {
@@ -78,17 +90,21 @@ PERMISSION_MATRIX: dict[ModuleCode, ModulePermission] = {
             view=(REC, MED, ENF, CAJ, LAB, OPT),
             manage=(REC, MED, ENF),
         ),
+        # Solo escribe la historia quien atiende: el administrador la consulta
+        # para auditar, pero no la edita.
         _module(
             ModuleCode.ENCOUNTERS,
             "Atenciones médicas",
             view=(MED, ENF, OPT),
             manage=(MED, ENF, OPT),
+            admin_manages=False,
         ),
         _module(
             ModuleCode.MEDICAL_RECORDS,
             "Historias clínicas",
             view=(MED, ENF, OPT),
             manage=(MED,),
+            admin_manages=False,
         ),
         _module(
             ModuleCode.STUDIES,

@@ -13,6 +13,7 @@ import {
   type TabItem,
 } from '@/components/ui'
 import { ServicePicker } from '@/features/catalog/components/ServicePicker'
+import { useModuleAccess } from '@/hooks/useModuleAccess'
 import { useActivePractitioners } from '@/features/catalog/hooks/useCatalog'
 import { useEncounterActions } from '@/features/encounters/hooks/useEncounters'
 import { inventoryApi } from '@/features/inventory/api/inventory.api'
@@ -153,8 +154,13 @@ export function EncounterFormModal({
   onClose,
 }: EncounterFormModalProps) {
   const isEdit = encounter !== null
+  // La historia la escribe quien atiende. El resto del personal con acceso
+  // —administración incluida— la consulta, pero no la modifica.
+  const { canManage } = useModuleAccess()
+  const canWrite = canManage('ENCOUNTERS')
   // Una atención finalizada o anulada se consulta, pero ya no admite cambios.
-  const isReadOnly = encounter !== null && !encounter.is_editable
+  const isClosed = encounter !== null && !encounter.is_editable
+  const isReadOnly = !canWrite || isClosed
   const { practitioners } = useActivePractitioners()
   const { create, update } = useEncounterActions()
   const isLoading = create.isPending || update.isPending
@@ -394,8 +400,9 @@ export function EncounterFormModal({
 
         {isReadOnly && (
           <Alert variant="info">
-            Esta atención está {encounter.status_label.toLowerCase()} y se muestra solo para
-            consulta.
+            {isClosed
+              ? `Esta atención está ${encounter.status_label.toLowerCase()} y se muestra solo para consulta.`
+              : 'Su perfil consulta la historia clínica, pero no la modifica: solo la registra quien atiende al paciente.'}
           </Alert>
         )}
 

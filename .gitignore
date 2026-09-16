@@ -16,6 +16,7 @@ backend/dev.db
 # Material de referencia, no necesario para construir ni ejecutar la app.
 # Puede contener datos personales y el contrato del cliente.
 formatos_clinica/
+fomato_clinicasatipo/
 *.docx
 *.xlsx
 paciente.png

@@ -11,7 +11,7 @@ import {
   Textarea,
   type SelectOption,
 } from '@/components/ui'
-import { useActiveServices } from '@/features/catalog/hooks/useCatalog'
+import { ServicePicker } from '@/features/catalog/components/ServicePicker'
 import { ProductPicker } from '@/features/inventory/components/ProductPicker'
 import { PatientPicker } from '@/features/patients/components/PatientPicker'
 import { useDocumentSeries, useSaleActions } from '@/features/sales/hooks/useSales'
@@ -23,6 +23,7 @@ import {
   PAYMENT_METHODS,
   SALE_DOCUMENT_LABELS,
   SALE_DOCUMENT_TYPES,
+  type MedicalService,
   type PatientSummary,
   type PaymentMethod,
   type ProductSummary,
@@ -45,7 +46,7 @@ type LineKind = 'PRODUCT' | 'SERVICE'
 interface LineDraft {
   kind: LineKind
   product: ProductSummary | null
-  serviceId: string
+  service: MedicalService | null
   description: string
   quantity: string
   unitPrice: string
@@ -55,7 +56,7 @@ interface LineDraft {
 const emptyLine = (kind: LineKind = 'SERVICE'): LineDraft => ({
   kind,
   product: null,
-  serviceId: '',
+  service: null,
   description: '',
   quantity: '1',
   unitPrice: '',
@@ -76,7 +77,6 @@ interface SaleFormModalProps {
 }
 
 export function SaleFormModal({ open, onClose, onIssued }: SaleFormModalProps) {
-  const { services } = useActiveServices()
   const { series } = useDocumentSeries(true)
   const { create } = useSaleActions()
   const configuredTaxRate = useTaxRate()
@@ -116,22 +116,8 @@ export function SaleFormModal({ open, onClose, onIssued }: SaleFormModalProps) {
     [series, documentType],
   )
 
-  const serviceOptions: SelectOption[] = services.map((item) => ({
-    value: String(item.id),
-    label: `${item.name} — ${formatMoney(item.price)}`,
-  }))
-
   const updateLine = (index: number, patch: Partial<LineDraft>) =>
     setLines((prev) => prev.map((line, i) => (i === index ? { ...line, ...patch } : line)))
-
-  const selectService = (index: number, serviceId: string) => {
-    const service = services.find((item) => String(item.id) === serviceId)
-    updateLine(index, {
-      serviceId,
-      description: service?.name ?? '',
-      unitPrice: service ? service.price : '',
-    })
-  }
 
   const total = lines.reduce((sum, line) => sum + lineTotal(line), 0)
   const taxRate = applyTax ? configuredTaxRate : 0
@@ -143,7 +129,7 @@ export function SaleFormModal({ open, onClose, onIssued }: SaleFormModalProps) {
     if (create.isPending) return
 
     const validLines = lines.filter(
-      (line) => line.product !== null || line.serviceId !== '' || line.description.trim() !== '',
+      (line) => line.product !== null || line.service !== null || line.description.trim() !== '',
     )
     if (validLines.length === 0) return setFormError('Agregue al menos un ítem al comprobante')
     if (validLines.some((line) => Number(line.quantity) <= 0)) {
@@ -158,7 +144,7 @@ export function SaleFormModal({ open, onClose, onIssued }: SaleFormModalProps) {
 
     const items: SaleItemPayload[] = validLines.map((line) => ({
       product_id: line.product?.id ?? null,
-      service_id: line.kind === 'SERVICE' && line.serviceId ? Number(line.serviceId) : null,
+      service_id: line.kind === 'SERVICE' ? (line.service?.id ?? null) : null,
       description: line.description.trim() || null,
       quantity: Number(line.quantity),
       unit_price: line.unitPrice.trim() || null,
@@ -302,12 +288,17 @@ export function SaleFormModal({ open, onClose, onIssued }: SaleFormModalProps) {
                 />
 
                 {line.kind === 'SERVICE' ? (
-                  <Select
-                    options={serviceOptions}
-                    placeholder="Seleccione el servicio"
-                    value={line.serviceId}
+                  <ServicePicker
+                    label=""
+                    value={line.service}
                     disabled={create.isPending}
-                    onChange={(event) => selectService(index, event.target.value)}
+                    onChange={(service) =>
+                      updateLine(index, {
+                        service,
+                        description: service?.name ?? '',
+                        unitPrice: service ? service.price : '',
+                      })
+                    }
                   />
                 ) : (
                   <ProductPicker

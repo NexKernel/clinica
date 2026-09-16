@@ -12,7 +12,8 @@ import {
   type SelectOption,
   type TabItem,
 } from '@/components/ui'
-import { useActivePractitioners, useActiveServices } from '@/features/catalog/hooks/useCatalog'
+import { ServicePicker } from '@/features/catalog/components/ServicePicker'
+import { useActivePractitioners } from '@/features/catalog/hooks/useCatalog'
 import { useEncounterActions } from '@/features/encounters/hooks/useEncounters'
 import { inventoryApi } from '@/features/inventory/api/inventory.api'
 import { ProductPicker } from '@/features/inventory/components/ProductPicker'
@@ -23,6 +24,7 @@ import {
   DIAGNOSIS_KINDS,
   type DiagnosisPayload,
   type Encounter,
+  type MedicalService,
   type PatientSummary,
   type PrescriptionPayload,
   type Product,
@@ -154,7 +156,6 @@ export function EncounterFormModal({
   // Una atención finalizada o anulada se consulta, pero ya no admite cambios.
   const isReadOnly = encounter !== null && !encounter.is_editable
   const { practitioners } = useActivePractitioners()
-  const { services } = useActiveServices()
   const { create, update } = useEncounterActions()
   const isLoading = create.isPending || update.isPending
   const locked = isLoading || isReadOnly
@@ -162,6 +163,7 @@ export function EncounterFormModal({
   const [tab, setTab] = useState('clinical')
   const [patient, setPatient] = useState<PatientSummary | null>(null)
   const [practitionerId, setPractitionerId] = useState('')
+  const [service, setService] = useState<MedicalService | null>(null)
   const [values, setValues] = useState<FormValues>(emptyValues)
   const [diagnoses, setDiagnoses] = useState<DiagnosisPayload[]>([])
   const [prescriptions, setPrescriptions] = useState<PrescriptionRow[]>([])
@@ -171,6 +173,7 @@ export function EncounterFormModal({
     if (!open) return
     setTab('clinical')
     setFormError(null)
+    setService(null)
 
     if (encounter) {
       setPatient(encounter.patient)
@@ -355,10 +358,6 @@ export function EncounterFormModal({
     value: String(item.id),
     label: item.specialty_name ? `${item.full_name} — ${item.specialty_name}` : item.full_name,
   }))
-  const serviceOptions: SelectOption[] = services.map((item) => ({
-    value: String(item.id),
-    label: item.name,
-  }))
 
   return (
     <Modal
@@ -412,13 +411,15 @@ export function EncounterFormModal({
                 disabled={locked}
                 onChange={(event) => setPractitionerId(event.target.value)}
               />
-              <Select
+              <ServicePicker
                 label="Servicio"
-                options={serviceOptions}
-                placeholder="Sin servicio asociado"
-                value={values.service_id}
+                placeholder="Busque el servicio (opcional)"
+                value={service}
                 disabled={locked}
-                onChange={(event) => setField('service_id')(event.target.value)}
+                onChange={(item) => {
+                  setService(item)
+                  setField('service_id')(item ? String(item.id) : '')
+                }}
               />
             </div>
           </>

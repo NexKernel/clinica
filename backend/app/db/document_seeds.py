@@ -19,7 +19,7 @@ anterior queda desactivada pero disponible para los documentos ya emitidos.
 """
 
 import logging
-from typing import Any
+from typing import Any, NamedTuple
 
 from sqlalchemy.orm import Session
 
@@ -1031,6 +1031,787 @@ ECG = {
 }
 
 
+# Informes de laboratorio --------------------------------------------------
+# Las hojas de resultados de la carpeta `Laboratorio` son todas el mismo
+# formato: identificación, muestra, tabla de analitos con su valor de
+# referencia y firma del responsable. Se declaran con `lab_report` para no
+# repetir ese armazón en cada examen y, sobre todo, para que un mismo analito
+# guarde siempre la misma clave: así la glucosa de un perfil bioquímico y la
+# de un perfil renal son comparables entre sí.
+
+
+class Analyte(NamedTuple):
+    """Fila de la tabla de resultados: qué se mide, en qué unidad y su rango.
+
+    El rango es texto de la hoja impresa, no una validación: un valor fuera de
+    rango se registra igual, porque el informe debe poder reportar lo anormal.
+    """
+
+    key: str
+    label: str
+    unit: str = ""
+    reference: str = ""
+    type: str = "number"
+    options: list[dict[str, str]] | None = None
+    default: str | None = None
+
+
+LAB_HEADER = """<table class="doc-grid">
+<tr><td class="k">Paciente</td><td>{{ paciente.nombre_completo }}</td>
+    <td class="k">Historia</td><td>{{ paciente.historia }}</td></tr>
+<tr><td class="k">Documento</td><td>{{ paciente.tipo_documento }} {{ paciente.documento }}</td>
+    <td class="k">Edad</td><td>{{ paciente.edad }}</td></tr>
+<tr><td class="k">Fecha</td><td>{{ fecha.hoy }}</td>
+    <td class="k">Hora</td><td>{{ fecha.hora }}</td></tr>
+<tr><td class="k">Muestra</td><td>__MUESTRA__</td>
+    <td class="k">Solicitado por</td><td>{{ campo.solicitante }}</td></tr>
+</table>"""
+
+LAB_SIGN = """<div class="doc-signatures">
+<div class="sign"><div class="line"></div>
+<div class="role">Responsable del laboratorio</div>
+<div class="hint">{{ profesional.nombre }} · Colegiatura {{ profesional.cmp }}</div></div>
+</div>"""
+
+LAB_NOTE = (
+    '<p class="doc-note">El resultado corresponde únicamente a la muestra recibida '
+    "y debe interpretarse junto con la evaluación clínica del paciente.</p>"
+)
+
+FIELD_SOLICITANTE: dict[str, Any] = {
+    "key": "solicitante",
+    "label": "Médico que solicita",
+    "type": "text",
+    "group": "Muestra",
+    "wide": True,
+}
+
+FIELD_OBSERVACIONES_LAB: dict[str, Any] = {
+    "key": "observaciones",
+    "label": "Observaciones",
+    "type": "textarea",
+    "group": "Observaciones",
+    "default": "Ninguna",
+    "wide": True,
+}
+
+
+def _analyte_field(item: Analyte, group: str) -> dict[str, Any]:
+    field: dict[str, Any] = {
+        "key": item.key,
+        "label": f"{item.label} ({item.unit})" if item.unit else item.label,
+        "type": "select" if item.options else item.type,
+        "group": group,
+    }
+    if item.options:
+        field["options"] = item.options
+    if item.default is not None:
+        field["default"] = item.default
+    if item.reference:
+        field["help"] = f"Referencia: {item.reference}"
+    return field
+
+
+def _analyte_row(item: Analyte) -> str:
+    value = "{{ campo." + item.key + " }}" + (f" {item.unit}" if item.unit else "")
+    return f"<tr><td>{item.label}</td><td>{value}</td><td>{item.reference}</td></tr>"
+
+
+def lab_report(
+    code: str,
+    title: str,
+    description: str,
+    sample: str,
+    sections: tuple[tuple[str, tuple[Analyte, ...]], ...],
+) -> dict[str, Any]:
+    """Informe de laboratorio: muestra, analitos, observaciones y firma."""
+    fields: list[dict[str, Any]] = [FIELD_SOLICITANTE]
+    blocks: list[str] = []
+
+    for group, analytes in sections:
+        fields.extend(_analyte_field(item, group) for item in analytes)
+        blocks.append(
+            f"<h2>{group}</h2>"
+            '<table class="doc-table">'
+            "<tr><th>Analito</th><th>Resultado</th><th>Valores de referencia</th></tr>"
+            + "".join(_analyte_row(item) for item in analytes)
+            + "</table>"
+        )
+
+    fields.append(FIELD_OBSERVACIONES_LAB)
+    return {
+        "code": code,
+        "version": 1,
+        "family": INFORME,
+        "title": title,
+        "description": description,
+        "study_type": "LABORATORIO",
+        "requires_signature": True,
+        "fields": fields,
+        "body": (
+            LAB_HEADER.replace("__MUESTRA__", sample)
+            + "".join(blocks)
+            + "<h2>Observaciones</h2><p>{{ campo.observaciones|parrafos }}</p>"
+            + LAB_SIGN
+            + LAB_NOTE
+        ),
+    }
+
+
+NO_SE_OBSERVA = opts("No se observa", "Escasos", "Regular cantidad", "Abundantes")
+NO_REACTIVO = opts("No reactivo", "Reactivo")
+
+LAB_HEMOGRAMA = lab_report(
+    "LAB-HEM",
+    "Hemograma completo",
+    "Serie roja, plaquetas y fórmula leucocitaria",
+    "Sangre total con EDTA",
+    (
+        ("Serie roja y plaquetas", (
+            Analyte("hematocrito", "Hematocrito", "%", "Varones 40 a 54 · Mujeres 36 a 47"),
+            Analyte("hemoglobina", "Hemoglobina", "g/dL", "Varones 13 a 17 · Mujeres 12 a 16"),
+            Analyte("plaquetas", "Recuento de plaquetas", "por mm³", "150 000 a 450 000"),
+            Analyte("vcm", "Volumen corpuscular medio", "fL", "80 a 100"),
+            Analyte("hcm", "Hemoglobina corpuscular media", "pg", "27 a 32"),
+            Analyte("chcm", "Concentración corpuscular media", "g/dL", "32 a 36"),
+        )),
+        ("Serie blanca", (
+            Analyte("leucocitos", "Leucocitos", "por mm³", "5 000 a 10 000"),
+            Analyte("abastonados", "Abastonados", "%", "0 a 1"),
+            Analyte("segmentados", "Segmentados", "%", "60 a 75"),
+            Analyte("eosinofilos", "Eosinófilos", "%", "0,5 a 4"),
+            Analyte("basofilos", "Basófilos", "%", "0,5 a 1"),
+            Analyte("monocitos", "Monocitos", "%", "3 a 8"),
+            Analyte("linfocitos", "Linfocitos", "%", "20 a 35"),
+        )),
+    ),
+)
+
+LAB_ORINA = lab_report(
+    "LAB-ORI",
+    "Examen completo de orina",
+    "Examen macroscópico, reacción bioquímica y sedimento urinario",
+    "Orina de primer chorro medio",
+    (
+        ("Examen macroscópico", (
+            Analyte("color", "Color", type="select",
+                    options=opts("Amarillo", "Amarillo claro", "Amarillo ámbar", "Rojizo", "Incoloro"),
+                    default="Amarillo"),
+            Analyte("aspecto", "Aspecto", type="select",
+                    options=opts("Transparente", "Ligeramente turbio", "Turbio"),
+                    default="Transparente"),
+            Analyte("ph", "pH", "", "4,5 a 8,0"),
+            Analyte("densidad", "Densidad", "", "1,005 a 1,030"),
+        )),
+        ("Reacción bioquímica", (
+            Analyte("glucosa", "Glucosa", type="select", options=NEGATIVO_POSITIVO, default="Negativo", reference="Negativo"),
+            Analyte("proteinas", "Proteínas", type="select", options=NEGATIVO_POSITIVO, default="Negativo", reference="Negativo"),
+            Analyte("bilirrubina", "Bilirrubina", type="select", options=NEGATIVO_POSITIVO, default="Negativo", reference="Negativo"),
+            Analyte("urobilinogeno", "Urobilinógeno", type="select", options=NEGATIVO_POSITIVO, default="Negativo", reference="Normal"),
+            Analyte("hemoglobina_orina", "Hemoglobina", type="select", options=NEGATIVO_POSITIVO, default="Negativo", reference="Negativo"),
+            Analyte("nitritos", "Nitritos", type="select", options=NEGATIVO_POSITIVO, default="Negativo", reference="Negativo"),
+            Analyte("cetonas", "Cetonas", type="select", options=NEGATIVO_POSITIVO, default="Negativo", reference="Negativo"),
+            Analyte("ascorbico", "Ácido ascórbico", type="select", options=NEGATIVO_POSITIVO, default="Negativo", reference="Negativo"),
+        )),
+        ("Sedimento urinario", (
+            Analyte("celulas_epiteliales", "Células epiteliales", "por campo", "0 a 3", type="text"),
+            Analyte("hematies", "Hematíes", "por campo", "0 a 2", type="text"),
+            Analyte("leucocitos_orina", "Leucocitos", "por campo", "0 a 5", type="text"),
+            Analyte("piocitos", "Piocitos", type="select", options=NO_SE_OBSERVA, default="No se observa", reference="No se observa"),
+            Analyte("germenes", "Gérmenes", type="select", options=NO_SE_OBSERVA, default="No se observa", reference="No se observa"),
+            Analyte("cristales", "Cristales", type="text", reference="No se observa"),
+            Analyte("cilindros", "Cilindros", type="text", reference="No se observa"),
+            Analyte("levaduras", "Levaduras", type="select", options=NO_SE_OBSERVA, default="No se observa", reference="No se observa"),
+            Analyte("filamento_mucoide", "Filamento mucoide", type="select", options=NO_SE_OBSERVA, default="No se observa", reference="Escaso"),
+        )),
+    ),
+)
+
+LAB_PARASITOLOGICO = lab_report(
+    "LAB-PAR",
+    "Examen parasitológico de heces",
+    "Examen macroscópico y microscópico, simple o seriado",
+    "Heces",
+    (
+        ("Examen macroscópico", (
+            Analyte("color_heces", "Color", type="text"),
+            Analyte("consistencia", "Consistencia", type="select",
+                    options=opts("Formada", "Semiformada", "Blanda", "Líquida"), default="Formada"),
+            Analyte("moco", "Moco", type="select", options=AUSENTE_PRESENTE, default="Ausente", reference="Ausente"),
+            Analyte("sangre_macro", "Sangre visible", type="select", options=AUSENTE_PRESENTE, default="Ausente", reference="Ausente"),
+        )),
+        ("Examen microscópico", (
+            Analyte("quistes", "Quistes", type="text", reference="No se observa"),
+            Analyte("trofozoitos", "Trofozoítos", type="text", reference="No se observa"),
+            Analyte("huevos", "Huevos de helmintos", type="text", reference="No se observa"),
+            Analyte("larvas", "Larvas", type="text", reference="No se observa"),
+            Analyte("leucocitos_heces", "Leucocitos", "por campo", "0 a 2", type="text"),
+            Analyte("hematies_heces", "Hematíes", "por campo", "No se observa", type="text"),
+            Analyte("levaduras_heces", "Levaduras", type="select", options=NO_SE_OBSERVA, default="No se observa", reference="Escasas"),
+            Analyte("restos", "Restos alimenticios", type="select", options=NO_SE_OBSERVA, default="Escasos"),
+        )),
+    ),
+)
+
+LAB_BIOQUIMICA = lab_report(
+    "LAB-BIO",
+    "Perfil bioquímico",
+    "Glucosa, urea, creatinina y ácido úrico",
+    "Suero",
+    (
+        ("Bioquímica", (
+            Analyte("glucosa_serica", "Glucosa", "mg/dL", "70 a 110"),
+            Analyte("urea", "Urea", "mg/dL", "10 a 50"),
+            Analyte("creatinina", "Creatinina", "mg/dL", "0,6 a 1,2"),
+            Analyte("acido_urico", "Ácido úrico", "mg/dL", "Varones 3,4 a 7,0 · Mujeres 2,4 a 5,7"),
+        )),
+    ),
+)
+
+LAB_LIPIDICO = lab_report(
+    "LAB-LIP",
+    "Perfil lipídico",
+    "Colesterol total, triglicéridos, HDL y LDL",
+    "Suero en ayunas de 12 horas",
+    (
+        ("Perfil lipídico", (
+            Analyte("colesterol_total", "Colesterol total", "mg/dL", "140 a 200"),
+            Analyte("trigliceridos", "Triglicéridos", "mg/dL", "25 a 160"),
+            Analyte("hdl", "Colesterol HDL", "mg/dL", "30 a 70"),
+            Analyte("ldl", "Colesterol LDL", "mg/dL", "Hasta 150"),
+            Analyte("vldl", "Colesterol VLDL", "mg/dL", "5 a 40"),
+            Analyte("glucosa_lipidos", "Glucosa", "mg/dL", "70 a 110"),
+        )),
+    ),
+)
+
+LAB_HEPATICO = lab_report(
+    "LAB-HEP",
+    "Perfil hepático",
+    "Transaminasas, bilirrubinas, fosfatasa alcalina y proteínas",
+    "Suero",
+    (
+        ("Enzimas", (
+            Analyte("tgo", "TGO (AST)", "U/L", "Hasta 40"),
+            Analyte("tgp", "TGP (ALT)", "U/L", "Hasta 41"),
+            Analyte("fosfatasa_alcalina", "Fosfatasa alcalina", "U/L", "40 a 129"),
+            Analyte("ggt", "Gamma glutamil transpeptidasa", "U/L", "8 a 61"),
+        )),
+        ("Bilirrubinas", (
+            Analyte("bilirrubina_total", "Bilirrubina total", "mg/dL", "0,2 a 1,2"),
+            Analyte("bilirrubina_directa", "Bilirrubina directa", "mg/dL", "0,0 a 0,3"),
+            Analyte("bilirrubina_indirecta", "Bilirrubina indirecta", "mg/dL", "0,2 a 0,9"),
+        )),
+        ("Proteínas", (
+            Analyte("proteinas_totales", "Proteínas totales", "g/dL", "6,4 a 8,3"),
+            Analyte("albumina", "Albúmina", "g/dL", "3,5 a 5,2"),
+            Analyte("globulinas", "Globulinas", "g/dL", "2,0 a 3,5"),
+        )),
+    ),
+)
+
+LAB_RENAL = lab_report(
+    "LAB-REN",
+    "Perfil renal",
+    "Urea, creatinina, depuración y proteínas en orina de 24 horas",
+    "Suero y orina de 24 horas",
+    (
+        ("Suero", (
+            Analyte("urea_renal", "Urea", "mg/dL", "10 a 50"),
+            Analyte("creatinina_renal", "Creatinina", "mg/dL", "0,6 a 1,2"),
+            Analyte("acido_urico_renal", "Ácido úrico", "mg/dL", "2,4 a 7,0"),
+        )),
+        ("Orina de 24 horas", (
+            Analyte("volumen_24h", "Volumen urinario", "mL", "800 a 2 000"),
+            Analyte("depuracion", "Depuración de creatinina", "mL/min", "88 a 137"),
+            Analyte("proteinas_24h", "Proteínas totales", "mg/24 h", "Hasta 150"),
+        )),
+    ),
+)
+
+LAB_TIROIDEO = lab_report(
+    "LAB-TIR",
+    "Perfil tiroideo",
+    "TSH, T3 y T4 libre por IEMA / ELISA",
+    "Suero",
+    (
+        ("Hormonas tiroideas", (
+            Analyte("tsh", "TSH", "µUI/mL", "0,28 a 5,60"),
+            Analyte("t3", "T3", "ng/mL", "0,80 a 2,00"),
+            Analyte("t4_libre", "T4 libre", "ng/dL", "0,93 a 1,70"),
+        )),
+    ),
+)
+
+LAB_GLICOSILADA = lab_report(
+    "LAB-GLI",
+    "Hemoglobina glicosilada",
+    "HbA1c y glucosa promedio estimada",
+    "Sangre total con EDTA",
+    (
+        ("Control metabólico", (
+            Analyte("hba1c", "Hemoglobina glicosilada A1c", "%",
+                    "Normal menos de 5,7 · Prediabetes 5,7 a 6,4 · Diabetes 6,5 a más"),
+            Analyte("glucosa_promedio", "Glucosa promedio estimada", "mg/dL", "Hasta 117"),
+        )),
+    ),
+)
+
+LAB_GRUPO = lab_report(
+    "LAB-GRU",
+    "Grupo sanguíneo y factor Rh",
+    "Inmunohematología: grupo ABO y factor Rh",
+    "Sangre total",
+    (
+        ("Inmunohematología", (
+            Analyte("grupo", "Grupo sanguíneo", type="select", options=opts("O", "A", "B", "AB")),
+            Analyte("factor", "Factor Rh", type="select", options=opts("Positivo", "Negativo")),
+        )),
+    ),
+)
+
+LAB_COAGULACION = lab_report(
+    "LAB-COA",
+    "Tiempos de coagulación",
+    "Coagulación, sangría, protrombina, INR y TTPa",
+    "Sangre total y plasma citratado",
+    (
+        ("Hemostasia", (
+            Analyte("tiempo_coagulacion", "Tiempo de coagulación", "minutos", "5 a 10"),
+            Analyte("tiempo_sangria", "Tiempo de sangría", "minutos", "1 a 3"),
+            Analyte("tiempo_protrombina", "Tiempo de protrombina", "segundos", "11 a 15"),
+            Analyte("inr", "INR", "", "0,8 a 1,2"),
+            Analyte("ttpa", "Tiempo de tromboplastina parcial", "segundos", "25 a 35"),
+        )),
+    ),
+)
+
+LAB_VSG = lab_report(
+    "LAB-VSG",
+    "Velocidad de sedimentación globular",
+    "VSG por el método de Westergren",
+    "Sangre total con citrato",
+    (
+        ("Velocidad de sedimentación", (
+            Analyte("vsg_1h", "VSG primera hora", "mm/h", "Varones 0 a 15 · Mujeres 0 a 20"),
+            Analyte("vsg_2h", "VSG segunda hora", "mm/h", "Hasta el doble de la primera hora"),
+        )),
+    ),
+)
+
+LAB_PCR = lab_report(
+    "LAB-PCR",
+    "Proteína C reactiva",
+    "PCR cualitativa por látex y cuantitativa",
+    "Suero",
+    (
+        ("Proteína C reactiva", (
+            Analyte("pcr_cualitativa", "PCR cualitativa", type="select",
+                    options=NEGATIVO_POSITIVO, default="Negativo", reference="Negativo"),
+            Analyte("pcr_cuantitativa", "PCR cuantitativa", "mg/L", "Hasta 6"),
+        )),
+    ),
+)
+
+LAB_RPR = lab_report(
+    "LAB-RPR",
+    "Prueba serológica RPR / VDRL",
+    "Descarte de sífilis, cualitativo y por diluciones",
+    "Suero",
+    (
+        ("Inmunología", (
+            Analyte("rpr", "RPR / VDRL", type="select", options=NO_REACTIVO,
+                    default="No reactivo", reference="No reactivo"),
+            Analyte("dilucion", "Título de la dilución", type="text", reference="No aplica si es no reactivo"),
+        )),
+    ),
+)
+
+LAB_VIH = lab_report(
+    "LAB-VIH",
+    "Prueba rápida de VIH",
+    "Tamizaje de VIH 1 y 2, con consejería previa",
+    "Sangre total o suero",
+    (
+        ("Tamizaje", (
+            Analyte("vih", "VIH 1 y 2", type="select", options=NO_REACTIVO,
+                    default="No reactivo", reference="No reactivo"),
+            Analyte("prueba_usada", "Prueba utilizada", type="text"),
+        )),
+    ),
+)
+
+LAB_HEPATITIS = lab_report(
+    "LAB-HBS",
+    "Marcadores de hepatitis",
+    "Antígeno australiano HBsAg, anti VHC y hepatitis A IgM",
+    "Suero",
+    (
+        ("Marcadores virales", (
+            Analyte("hbsag", "Antígeno de superficie HBsAg", type="select", options=NO_REACTIVO,
+                    default="No reactivo", reference="No reactivo"),
+            Analyte("anti_vhc", "Anticuerpos anti VHC", type="select", options=NO_REACTIVO,
+                    default="No reactivo", reference="No reactivo"),
+            Analyte("hav_igm", "Hepatitis A IgM", type="select", options=NO_REACTIVO,
+                    default="No reactivo", reference="No reactivo"),
+        )),
+    ),
+)
+
+LAB_DENGUE = lab_report(
+    "LAB-DEN",
+    "Prueba rápida de dengue",
+    "Antígeno NS1 y anticuerpos IgM e IgG",
+    "Suero",
+    (
+        ("Dengue", (
+            Analyte("ns1", "Antígeno NS1", type="select", options=NEGATIVO_POSITIVO,
+                    default="Negativo", reference="Negativo"),
+            Analyte("dengue_igm", "Anticuerpos IgM", type="select", options=NEGATIVO_POSITIVO,
+                    default="Negativo", reference="Negativo"),
+            Analyte("dengue_igg", "Anticuerpos IgG", type="select", options=NEGATIVO_POSITIVO,
+                    default="Negativo", reference="Negativo"),
+        )),
+    ),
+)
+
+LAB_HELICOBACTER = lab_report(
+    "LAB-HPY",
+    "Helicobacter pylori",
+    "Prueba rápida en sangre o en heces",
+    "Suero o heces",
+    (
+        ("Helicobacter pylori", (
+            Analyte("hpylori", "Helicobacter pylori", type="select", options=NEGATIVO_POSITIVO,
+                    default="Negativo", reference="Negativo"),
+            Analyte("hpylori_muestra", "Tipo de muestra analizada", type="select",
+                    options=opts("Sangre", "Heces"), default="Sangre"),
+        )),
+    ),
+)
+
+LAB_AGLUTINACIONES = lab_report(
+    "LAB-AGL",
+    "Aglutinaciones febriles",
+    "Reacción de Widal y Brucella en lámina",
+    "Suero",
+    (
+        ("Aglutinaciones", (
+            Analyte("tifico_o", "Antígeno tífico O", type="text", reference="Menor de 1/80"),
+            Analyte("tifico_h", "Antígeno tífico H", type="text", reference="Menor de 1/80"),
+            Analyte("paratifico_a", "Antígeno paratífico A", type="text", reference="Menor de 1/80"),
+            Analyte("paratifico_b", "Antígeno paratífico B", type="text", reference="Menor de 1/80"),
+            Analyte("brucella", "Brucella abortus", type="select", options=NEGATIVO_POSITIVO,
+                    default="Negativo", reference="Negativo"),
+        )),
+    ),
+)
+
+LAB_EMBARAZO = lab_report(
+    "LAB-EMB",
+    "Diagnóstico de embarazo",
+    "Subunidad beta HCG cualitativa en orina o cuantitativa en sangre",
+    "Orina o suero",
+    (
+        ("Gonadotropina coriónica", (
+            Analyte("hcg_cualitativo", "HCG cualitativo", type="select", options=NEGATIVO_POSITIVO,
+                    default="Negativo", reference="Negativo en la mujer no gestante"),
+            Analyte("hcg_cuantitativo", "HCG cuantitativo", "mUI/mL", "Menor de 5 en la mujer no gestante"),
+            Analyte("muestra_hcg", "Tipo de muestra analizada", type="select",
+                    options=opts("Orina", "Sangre"), default="Orina"),
+        )),
+    ),
+)
+
+LAB_UROCULTIVO = lab_report(
+    "LAB-URO",
+    "Urocultivo y antibiograma",
+    "Recuento de colonias, germen aislado y sensibilidad",
+    "Orina de primer chorro medio",
+    (
+        ("Cultivo", (
+            Analyte("recuento", "Recuento de colonias", "UFC/mL", "Menor de 10 000: sin desarrollo significativo", type="text"),
+            Analyte("germen", "Germen aislado", type="text", reference="Ausencia de desarrollo bacteriano"),
+        )),
+        ("Antibiograma", (
+            Analyte("sensibles", "Antibióticos sensibles", type="text"),
+            Analyte("intermedios", "Antibióticos de sensibilidad intermedia", type="text"),
+            Analyte("resistentes", "Antibióticos resistentes", type="text"),
+        )),
+    ),
+)
+
+LAB_GRAM = lab_report(
+    "LAB-GRM",
+    "Examen directo y coloración Gram",
+    "Secreción vaginal, uretral, faríngea o de herida",
+    "Secreción",
+    (
+        ("Examen directo", (
+            Analyte("origen_muestra", "Origen de la muestra", type="text"),
+            Analyte("celulas_gram", "Células epiteliales", type="select", options=NO_SE_OBSERVA, default="Escasos"),
+            Analyte("leucocitos_gram", "Leucocitos", "por campo", "0 a 5", type="text"),
+            Analyte("trichomonas", "Trichomonas vaginalis", type="select", options=NO_SE_OBSERVA,
+                    default="No se observa", reference="No se observa"),
+            Analyte("clue_cells", "Clue cells", type="select", options=NO_SE_OBSERVA,
+                    default="No se observa", reference="No se observa"),
+        )),
+        ("Coloración Gram", (
+            Analyte("gram_positivos", "Cocos y bacilos Gram positivos", type="select",
+                    options=NO_SE_OBSERVA, default="No se observa"),
+            Analyte("gram_negativos", "Cocos y bacilos Gram negativos", type="select",
+                    options=NO_SE_OBSERVA, default="No se observa"),
+            Analyte("levaduras_gram", "Levaduras y pseudohifas", type="select",
+                    options=NO_SE_OBSERVA, default="No se observa", reference="No se observa"),
+        )),
+    ),
+)
+
+LAB_BACILOSCOPIA = lab_report(
+    "LAB-BK",
+    "Baciloscopía de esputo (BK)",
+    "Búsqueda de bacilos ácido alcohol resistentes por Ziehl-Neelsen",
+    "Esputo",
+    (
+        ("Baciloscopía", (
+            Analyte("bk_muestra1", "Primera muestra", type="select",
+                    options=opts("Negativo", "Paucibacilar", "Positivo (+)", "Positivo (++)", "Positivo (+++)"),
+                    default="Negativo", reference="Negativo"),
+            Analyte("bk_muestra2", "Segunda muestra", type="select",
+                    options=opts("No procesada", "Negativo", "Paucibacilar", "Positivo (+)", "Positivo (++)", "Positivo (+++)"),
+                    default="No procesada"),
+            Analyte("bk_muestra3", "Tercera muestra", type="select",
+                    options=opts("No procesada", "Negativo", "Paucibacilar", "Positivo (+)", "Positivo (++)", "Positivo (+++)"),
+                    default="No procesada"),
+        )),
+    ),
+)
+
+LAB_GOTA_GRUESA = lab_report(
+    "LAB-GOT",
+    "Gota gruesa para malaria",
+    "Búsqueda de Plasmodium y determinación de la especie",
+    "Sangre capilar",
+    (
+        ("Gota gruesa", (
+            Analyte("plasmodium", "Plasmodium", type="select", options=NEGATIVO_POSITIVO,
+                    default="Negativo", reference="Negativo"),
+            Analyte("especie", "Especie identificada", type="select",
+                    options=opts("No aplica", "Plasmodium vivax", "Plasmodium falciparum", "Infección mixta"),
+                    default="No aplica"),
+            Analyte("parasitemia", "Parasitemia", "parásitos/µL", "No aplica si es negativo", type="text"),
+        )),
+    ),
+)
+
+LAB_HONGOS = lab_report(
+    "LAB-KOH",
+    "Examen directo con KOH para hongos",
+    "Raspado de piel, uñas o cuero cabelludo",
+    "Raspado de piel o uñas",
+    (
+        ("Examen micológico directo", (
+            Analyte("zona_raspado", "Zona del raspado", type="text"),
+            Analyte("hifas", "Hifas", type="select", options=NO_SE_OBSERVA,
+                    default="No se observa", reference="No se observa"),
+            Analyte("esporas", "Esporas", type="select", options=NO_SE_OBSERVA,
+                    default="No se observa", reference="No se observa"),
+            Analyte("levaduras_koh", "Levaduras", type="select", options=NO_SE_OBSERVA,
+                    default="No se observa", reference="No se observa"),
+        )),
+    ),
+)
+
+LAB_LEISHMANIASIS = lab_report(
+    "LAB-LEI",
+    "Frotis para leishmaniasis",
+    "Búsqueda de amastigotes en el borde de la lesión",
+    "Frotis del borde de la lesión",
+    (
+        ("Frotis", (
+            Analyte("lesion", "Ubicación de la lesión", type="text"),
+            Analyte("amastigotes", "Amastigotes de Leishmania", type="select", options=NEGATIVO_POSITIVO,
+                    default="Negativo", reference="Negativo"),
+            Analyte("carga", "Carga parasitaria", type="select",
+                    options=opts("No aplica", "Escasa", "Moderada", "Abundante"), default="No aplica"),
+        )),
+    ),
+)
+
+LAB_PROTEINURIA = lab_report(
+    "LAB-PRO",
+    "Proteinuria de 24 horas",
+    "Volumen, concentración y excreción total de proteínas",
+    "Orina de 24 horas",
+    (
+        ("Proteinuria", (
+            Analyte("volumen_proteinuria", "Volumen urinario recolectado", "mL", "800 a 2 000"),
+            Analyte("proteinas_concentracion", "Proteínas", "mg/dL", "Hasta 10"),
+            Analyte("proteinuria_total", "Proteinuria total", "mg/24 h", "Hasta 150"),
+            Analyte("creatinuria", "Creatinina en orina", "mg/24 h", "Varones 800 a 2 000 · Mujeres 600 a 1 800"),
+        )),
+    ),
+)
+
+INFORME_RADIOLOGICO = {
+    "code": "RX-INF",
+    "version": 1,
+    "family": INFORME,
+    "title": "Informe radiológico",
+    "description": "Lectura e informe de un estudio de Rayos X",
+    "study_type": "RAYOS_X",
+    "requires_signature": True,
+    "fields": [
+        {"key": "estudio", "label": "Estudio realizado", "type": "text", "group": "Estudio", "required": True, "wide": True},
+        {"key": "proyecciones", "label": "Proyecciones", "type": "text", "group": "Estudio", "placeholder": "Frontal y lateral"},
+        FIELD_MOTIVO,
+        {"key": "comparacion", "label": "Estudios previos comparados", "type": "text", "group": "Estudio", "default": "No se dispone de estudios previos", "wide": True},
+        {"key": "hallazgos", "label": "Hallazgos", "type": "textarea", "group": "Lectura", "required": True, "wide": True},
+        {"key": "limitaciones", "label": "Limitaciones del estudio", "type": "text", "group": "Lectura", "default": "Ninguna", "wide": True},
+        FIELD_CONCLUSION,
+    ],
+    "body": (
+        HEADER_CLINICAL
+        + """<table class="doc-grid">
+<tr><td class="k">Estudio</td><td>{{ campo.estudio }}</td>
+    <td class="k">Proyecciones</td><td>{{ campo.proyecciones }}</td></tr>
+<tr><td class="k">Motivo</td><td>{{ campo.motivo }}</td>
+    <td class="k">Comparación</td><td>{{ campo.comparacion }}</td></tr>
+</table>
+
+<h2>Hallazgos</h2>
+<p>{{ campo.hallazgos|parrafos }}</p>
+<p><strong>Limitaciones del estudio:</strong> {{ campo.limitaciones }}</p>
+
+<h2>Conclusión</h2>
+<p>{{ campo.conclusion|parrafos }}</p>"""
+        + SIGN_DOCTOR
+        + '<p class="doc-note">El informe radiológico es un medio de ayuda diagnóstica '
+        "y debe ser correlacionado con la evaluación clínica del paciente.</p>"
+    ),
+}
+
+INFORME_AUDIOMETRIA = {
+    "code": "AUD",
+    "version": 1,
+    "family": INFORME,
+    "title": "Informe de audiometría",
+    "description": "Umbrales por vía aérea y ósea, y conclusión audiológica",
+    "study_type": "OTRO",
+    "requires_signature": True,
+    "fields": [
+        FIELD_MOTIVO,
+        {"key": "otoscopia_od", "label": "Otoscopía · oído derecho", "type": "text", "group": "Otoscopía", "default": "Conducto permeable, tímpano íntegro"},
+        {"key": "otoscopia_oi", "label": "Otoscopía · oído izquierdo", "type": "text", "group": "Otoscopía", "default": "Conducto permeable, tímpano íntegro"},
+        *[
+            measure(f"{via}_{oido}_{hz}", f"{titulo} · {lado} · {hz} Hz", f"Vía {titulo.lower()}")
+            for via, titulo in (("aerea", "Aérea"), ("osea", "Ósea"))
+            for oido, lado in (("od", "OD"), ("oi", "OI"))
+            for hz in ("500", "1000", "2000", "4000")
+        ],
+        {"key": "promedio_od", "label": "Promedio tonal · OD (dB)", "type": "number", "group": "Conclusión"},
+        {"key": "promedio_oi", "label": "Promedio tonal · OI (dB)", "type": "number", "group": "Conclusión"},
+        choice("grado_od", "Grado de pérdida · OD", "Conclusión",
+               opts("Audición normal", "Hipoacusia leve", "Hipoacusia moderada", "Hipoacusia severa", "Hipoacusia profunda"),
+               "Audición normal"),
+        choice("grado_oi", "Grado de pérdida · OI", "Conclusión",
+               opts("Audición normal", "Hipoacusia leve", "Hipoacusia moderada", "Hipoacusia severa", "Hipoacusia profunda"),
+               "Audición normal"),
+        FIELD_CONCLUSION,
+    ],
+    "body": (
+        HEADER_CLINICAL
+        + """<p><strong>Motivo del examen:</strong> {{ campo.motivo }}</p>
+
+<h2>Otoscopía</h2>
+<table class="doc-grid">
+<tr><td class="k">Oído derecho</td><td>{{ campo.otoscopia_od }}</td></tr>
+<tr><td class="k">Oído izquierdo</td><td>{{ campo.otoscopia_oi }}</td></tr>
+</table>
+
+<h2>Umbrales auditivos (dB)</h2>
+<table class="doc-table">
+<tr><th>Vía</th><th>Oído</th><th>500 Hz</th><th>1 000 Hz</th><th>2 000 Hz</th><th>4 000 Hz</th></tr>
+<tr><td>Aérea</td><td>Derecho</td><td>{{ campo.aerea_od_500 }}</td><td>{{ campo.aerea_od_1000 }}</td>
+    <td>{{ campo.aerea_od_2000 }}</td><td>{{ campo.aerea_od_4000 }}</td></tr>
+<tr><td>Aérea</td><td>Izquierdo</td><td>{{ campo.aerea_oi_500 }}</td><td>{{ campo.aerea_oi_1000 }}</td>
+    <td>{{ campo.aerea_oi_2000 }}</td><td>{{ campo.aerea_oi_4000 }}</td></tr>
+<tr><td>Ósea</td><td>Derecho</td><td>{{ campo.osea_od_500 }}</td><td>{{ campo.osea_od_1000 }}</td>
+    <td>{{ campo.osea_od_2000 }}</td><td>{{ campo.osea_od_4000 }}</td></tr>
+<tr><td>Ósea</td><td>Izquierdo</td><td>{{ campo.osea_oi_500 }}</td><td>{{ campo.osea_oi_1000 }}</td>
+    <td>{{ campo.osea_oi_2000 }}</td><td>{{ campo.osea_oi_4000 }}</td></tr>
+</table>
+
+<table class="doc-grid">
+<tr><td class="k">Promedio tonal OD</td><td>{{ campo.promedio_od }} dB</td>
+    <td class="k">Grado</td><td>{{ campo.grado_od }}</td></tr>
+<tr><td class="k">Promedio tonal OI</td><td>{{ campo.promedio_oi }} dB</td>
+    <td class="k">Grado</td><td>{{ campo.grado_oi }}</td></tr>
+</table>
+
+<h2>Conclusión</h2>
+<p>{{ campo.conclusion|parrafos }}</p>"""
+        + SIGN_DOCTOR
+    ),
+}
+
+INFORME_ESPIROMETRIA = {
+    "code": "ESP",
+    "version": 1,
+    "family": INFORME,
+    "title": "Informe de espirometría",
+    "description": "CVF, VEF1, relación VEF1/CVF e interpretación",
+    "study_type": "OTRO",
+    "requires_signature": True,
+    "fields": [
+        FIELD_MOTIVO,
+        measure("talla_esp", "Talla (cm)", "Datos del examen"),
+        measure("peso_esp", "Peso (kg)", "Datos del examen"),
+        choice("tabaquismo", "Antecedente de tabaquismo", "Datos del examen", SI_NO, "No"),
+        measure("cvf", "CVF (litros)", "Valores obtenidos"),
+        measure("cvf_porcentaje", "CVF (% del predicho)", "Valores obtenidos"),
+        measure("vef1", "VEF1 (litros)", "Valores obtenidos"),
+        measure("vef1_porcentaje", "VEF1 (% del predicho)", "Valores obtenidos"),
+        measure("relacion", "Relación VEF1/CVF (%)", "Valores obtenidos"),
+        measure("fef", "FEF 25-75 % (litros/segundo)", "Valores obtenidos"),
+        choice("patron", "Patrón ventilatorio", "Interpretación",
+               opts("Normal", "Obstructivo", "Restrictivo", "Mixto"), "Normal"),
+        choice("severidad_esp", "Severidad", "Interpretación",
+               opts("No aplica", "Leve", "Moderada", "Severa"), "No aplica"),
+        choice("colaboracion", "Colaboración del paciente", "Interpretación",
+               opts("Adecuada", "Regular", "Deficiente"), "Adecuada"),
+        FIELD_CONCLUSION,
+    ],
+    "body": (
+        HEADER_CLINICAL
+        + """<p><strong>Motivo del examen:</strong> {{ campo.motivo }}</p>
+<table class="doc-grid">
+<tr><td class="k">Talla</td><td>{{ campo.talla_esp }} cm</td>
+    <td class="k">Peso</td><td>{{ campo.peso_esp }} kg</td></tr>
+<tr><td class="k">Tabaquismo</td><td>{{ campo.tabaquismo }}</td>
+    <td class="k">Colaboración</td><td>{{ campo.colaboracion }}</td></tr>
+</table>
+
+<h2>Valores obtenidos</h2>
+<table class="doc-table">
+<tr><th>Parámetro</th><th>Valor</th><th>% del predicho</th></tr>
+<tr><td>CVF</td><td>{{ campo.cvf }} L</td><td>{{ campo.cvf_porcentaje }} %</td></tr>
+<tr><td>VEF1</td><td>{{ campo.vef1 }} L</td><td>{{ campo.vef1_porcentaje }} %</td></tr>
+<tr><td>VEF1 / CVF</td><td>{{ campo.relacion }} %</td><td>Referencia: mayor de 70 %</td></tr>
+<tr><td>FEF 25-75 %</td><td>{{ campo.fef }} L/s</td><td></td></tr>
+</table>
+
+<h2>Interpretación</h2>
+<table class="doc-grid">
+<tr><td class="k">Patrón ventilatorio</td><td>{{ campo.patron }}</td>
+    <td class="k">Severidad</td><td>{{ campo.severidad_esp }}</td></tr>
+</table>
+<p>{{ campo.conclusion|parrafos }}</p>"""
+        + SIGN_DOCTOR
+    ),
+}
+
+
 # --- Familia B · Fichas clínicas ------------------------------------------
 
 FICHA_OPTOMETRIA = {
@@ -1540,6 +2321,681 @@ INFORME_PSICOLOGICO = {
     ),
 }
 
+_SRQ_ITEMS: tuple[tuple[str, str], ...] = (
+    ("q1", "¿Tiene frecuentes dolores de cabeza?"),
+    ("q2", "¿Tiene mal apetito?"),
+    ("q3", "¿Duerme mal?"),
+    ("q4", "¿Se asusta con facilidad?"),
+    ("q5", "¿Sufre de temblor de manos?"),
+    ("q6", "¿Se siente nervioso, tenso o aburrido?"),
+    ("q7", "¿Sufre de mala digestión?"),
+    ("q8", "¿No puede pensar con claridad?"),
+    ("q9", "¿Se siente triste?"),
+    ("q10", "¿Llora usted con mucha frecuencia?"),
+    ("q11", "¿Tiene dificultad en disfrutar sus actividades diarias?"),
+    ("q12", "¿Tiene dificultad para tomar decisiones?"),
+    ("q13", "¿Tiene dificultad en hacer su trabajo y lo sufre?"),
+    ("q14", "¿Es incapaz de desempeñar un papel útil en su vida?"),
+    ("q15", "¿Ha perdido interés en las cosas?"),
+    ("q16", "¿Siente que usted es una persona inútil?"),
+    ("q17", "¿Ha tenido la idea de acabar con su vida?"),
+    ("q18", "¿Se siente cansado todo el tiempo?"),
+)
+
+_SRQ_OPTIONS = [{"value": "0", "label": "No"}, {"value": "1", "label": "Sí"}]
+
+_SRQ_ROWS = "".join(
+    f"<tr><td>{number}. {label}</td><td>{{{{ campo.{key} }}}}</td></tr>"
+    for number, (key, label) in enumerate(_SRQ_ITEMS, start=1)
+)
+
+TAMIZAJE_SRQ = {
+    "code": "FIC-SRQ",
+    "version": 1,
+    "family": FICHA,
+    "title": "Tamizaje de salud mental SRQ",
+    "description": "Cuestionario de autorreporte de síntomas, 18 preguntas",
+    "study_type": None,
+    "requires_signature": True,
+    "fields": [
+        *[
+            {
+                "key": key,
+                "label": label,
+                "type": "select",
+                "group": "Últimos 30 días",
+                "options": _SRQ_OPTIONS,
+                "default": "0",
+                "wide": True,
+            }
+            for key, label in _SRQ_ITEMS
+        ],
+        {
+            "key": "puntaje_srq",
+            "label": "Puntaje total",
+            "type": "computed",
+            "group": "Resultado",
+            "sum": [key for key, _ in _SRQ_ITEMS],
+            "help": "De 7 a más respuestas afirmativas orientan a un probable trastorno emocional.",
+        },
+        choice("resultado_srq", "Resultado del tamizaje", "Resultado",
+               opts("Negativo", "Positivo"), "Negativo"),
+        {"key": "interpretacion_srq", "label": "Interpretación y recomendaciones", "type": "textarea",
+         "group": "Resultado", "required": True, "wide": True},
+    ],
+    "body": (
+        HEADER_CLINICAL
+        + """<p>Responda pensando en cómo se ha sentido durante los últimos treinta días.
+Sus respuestas son confidenciales y no se comparten con terceros sin su autorización.</p>
+
+<table class="doc-table">
+<tr><th>Pregunta</th><th>Respuesta</th></tr>"""
+        + _SRQ_ROWS
+        + """</table>
+
+<table class="doc-grid">
+<tr><td class="k">Puntaje total</td><td><strong>{{ campo.puntaje_srq }} / 18</strong></td>
+    <td class="k">Resultado</td><td>{{ campo.resultado_srq }}</td></tr>
+</table>
+<p class="doc-note">Cada respuesta afirmativa vale un punto. La pregunta 17, sobre ideas
+de acabar con la vida, obliga a evaluación inmediata aunque el puntaje total sea bajo.</p>
+
+<h2>Interpretación y recomendaciones</h2>
+<p>{{ campo.interpretacion_srq|parrafos }}</p>"""
+        + """<div class="doc-signatures">
+<div class="sign"><div class="line"></div>
+<div class="role">Psicólogo(a) responsable</div>
+<div class="hint">{{ profesional.nombre }} · Colegiatura {{ profesional.cmp }}</div></div>
+</div>"""
+    ),
+}
+
+FICHA_TERAPIA_FISICA = {
+    "code": "FIC-FIS",
+    "version": 1,
+    "family": FICHA,
+    "title": "Ficha de evaluación de terapia física y rehabilitación",
+    "description": "Evaluación postural, dolor, rango y fuerza muscular",
+    "study_type": None,
+    "requires_signature": True,
+    "fields": [
+        {"key": "ocupacion", "label": "Ocupación", "type": "text", "group": "Antecedentes"},
+        {"key": "antecedentes", "label": "Antecedentes relevantes", "type": "text", "group": "Antecedentes",
+         "placeholder": "Diabetes, hipertensión, patología coronaria, oncológica", "wide": True},
+        {"key": "farmacos", "label": "Fármacos que recibe", "type": "text", "group": "Antecedentes", "wide": True},
+        {"key": "motivo_terapia", "label": "Motivo de consulta", "type": "textarea", "group": "Anamnesis", "required": True, "wide": True},
+        choice("postura_trabajo", "Postura predominante en el trabajo", "Anamnesis",
+               opts("Sedente", "Bípedo", "Alternante"), "Sedente"),
+        choice("movimientos_repetitivos", "Movimientos repetitivos", "Anamnesis", SI_NO, "No"),
+        choice("carga_manual", "Manejo manual de carga", "Anamnesis", SI_NO, "No"),
+        choice("cabeza", "Cabeza", "Evaluación postural", opts("Alineada", "Inclinada", "Rotada", "Adelantada"), "Alineada"),
+        choice("hombros", "Hombros", "Evaluación postural", opts("Simétricos", "Descendido derecho", "Descendido izquierdo", "En anteposición"), "Simétricos"),
+        choice("escapulas", "Escápulas", "Evaluación postural", opts("Simétricas", "Aladas"), "Simétricas"),
+        choice("columna_cervical", "Columna cervical", "Evaluación postural", opts("Lordosis fisiológica", "Hiperlordosis", "Rectificada"), "Lordosis fisiológica"),
+        choice("columna_dorsal", "Columna dorsal", "Evaluación postural", opts("Cifosis fisiológica", "Hipercifosis", "Plana"), "Cifosis fisiológica"),
+        choice("columna_lumbar", "Columna lumbar", "Evaluación postural", opts("Lordosis fisiológica", "Hiperlordosis", "Rectificada"), "Lordosis fisiológica"),
+        choice("escoliosis", "Escoliosis", "Evaluación postural", SI_NO, "No"),
+        choice("pelvis", "Pelvis", "Evaluación postural", opts("Neutra", "Anteversión", "Retroversión"), "Neutra"),
+        choice("rodillas", "Rodillas", "Evaluación postural", opts("Alineadas", "Genu valgo", "Genu varo", "Genu recurvatum"), "Alineadas"),
+        choice("pies", "Pies", "Evaluación postural", opts("Alineados", "En eversión", "En inversión", "Pie plano"), "Alineados"),
+        {"key": "zona_dolor", "label": "Zona del dolor", "type": "text", "group": "Dolor", "required": True, "wide": True},
+        measure("eva", "Escala visual analógica (0 a 10)", "Dolor"),
+        {"key": "tipo_dolor", "label": "Tipo de dolor", "type": "text", "group": "Dolor", "placeholder": "Punzante, urente, opresivo"},
+        choice("irradiacion", "Irradiación", "Dolor", SI_NO, "No"),
+        choice("apofisis", "Apófisis espinosas dolorosas a la palpación", "Examen físico", SI_NO, "No"),
+        {"key": "tono_muscular", "label": "Tono muscular", "type": "text", "group": "Examen físico", "default": "Normotonía"},
+        {"key": "rango_articular", "label": "Rango articular", "type": "text", "group": "Examen físico", "default": "Conservado", "wide": True},
+        {"key": "fuerza_muscular", "label": "Fuerza muscular (escala de Daniels)", "type": "text", "group": "Examen físico", "default": "5/5", "wide": True},
+        choice("lasegue", "Signo de Lasègue", "Maniobras", opts("Negativo", "Positivo derecho", "Positivo izquierdo", "Positivo bilateral"), "Negativo"),
+        choice("bragard", "Signo de Bragard", "Maniobras", opts("Negativo", "Positivo derecho", "Positivo izquierdo", "Positivo bilateral"), "Negativo"),
+        {"key": "diagnostico_fisio", "label": "Diagnóstico fisioterapéutico", "type": "textarea", "group": "Plan", "required": True, "wide": True},
+        {"key": "plan_terapia", "label": "Plan de tratamiento y objetivos", "type": "textarea", "group": "Plan", "required": True, "wide": True},
+        measure("sesiones", "Número de sesiones indicadas", "Plan"),
+    ],
+    "body": (
+        HEADER_CLINICAL
+        + """<table class="doc-grid">
+<tr><td class="k">Ocupación</td><td>{{ campo.ocupacion }}</td>
+    <td class="k">Fármacos</td><td>{{ campo.farmacos }}</td></tr>
+<tr><td class="k">Antecedentes</td><td colspan="3">{{ campo.antecedentes }}</td></tr>
+</table>
+
+<h2>Anamnesis</h2>
+<p>{{ campo.motivo_terapia|parrafos }}</p>
+<table class="doc-grid">
+<tr><td class="k">Postura laboral</td><td>{{ campo.postura_trabajo }}</td>
+    <td class="k">Movimientos repetitivos</td><td>{{ campo.movimientos_repetitivos }}</td></tr>
+<tr><td class="k">Manejo manual de carga</td><td colspan="3">{{ campo.carga_manual }}</td></tr>
+</table>
+
+<h2>Evaluación postural</h2>
+<table class="doc-table">
+<tr><th>Segmento</th><th>Hallazgo</th><th>Segmento</th><th>Hallazgo</th></tr>
+<tr><td>Cabeza</td><td>{{ campo.cabeza }}</td><td>Hombros</td><td>{{ campo.hombros }}</td></tr>
+<tr><td>Escápulas</td><td>{{ campo.escapulas }}</td><td>Escoliosis</td><td>{{ campo.escoliosis }}</td></tr>
+<tr><td>Columna cervical</td><td>{{ campo.columna_cervical }}</td><td>Columna dorsal</td><td>{{ campo.columna_dorsal }}</td></tr>
+<tr><td>Columna lumbar</td><td>{{ campo.columna_lumbar }}</td><td>Pelvis</td><td>{{ campo.pelvis }}</td></tr>
+<tr><td>Rodillas</td><td>{{ campo.rodillas }}</td><td>Pies</td><td>{{ campo.pies }}</td></tr>
+</table>
+
+<h2>Dolor</h2>
+<table class="doc-grid">
+<tr><td class="k">Zona</td><td>{{ campo.zona_dolor }}</td>
+    <td class="k">EVA</td><td>{{ campo.eva }} / 10</td></tr>
+<tr><td class="k">Tipo</td><td>{{ campo.tipo_dolor }}</td>
+    <td class="k">Irradiación</td><td>{{ campo.irradiacion }}</td></tr>
+</table>
+
+<h2>Examen físico</h2>
+<table class="doc-grid">
+<tr><td class="k">Apófisis espinosas</td><td>{{ campo.apofisis }}</td>
+    <td class="k">Tono muscular</td><td>{{ campo.tono_muscular }}</td></tr>
+<tr><td class="k">Rango articular</td><td>{{ campo.rango_articular }}</td>
+    <td class="k">Fuerza muscular</td><td>{{ campo.fuerza_muscular }}</td></tr>
+<tr><td class="k">Signo de Lasègue</td><td>{{ campo.lasegue }}</td>
+    <td class="k">Signo de Bragard</td><td>{{ campo.bragard }}</td></tr>
+</table>
+
+<h2>Diagnóstico fisioterapéutico</h2>
+<p>{{ campo.diagnostico_fisio|parrafos }}</p>
+
+<h2>Plan de tratamiento</h2>
+<p>{{ campo.plan_terapia|parrafos }}</p>
+<p><strong>Sesiones indicadas:</strong> {{ campo.sesiones }}</p>"""
+        + """<div class="doc-signatures">
+<div class="sign"><div class="line"></div>
+<div class="role">Fisioterapeuta responsable</div>
+<div class="hint">{{ profesional.nombre }} · Colegiatura {{ profesional.cmp }}</div></div>
+</div>"""
+    ),
+}
+
+CONTROL_TERAPIA = {
+    "code": "FIC-TER",
+    "version": 1,
+    "family": FICHA,
+    "title": "Hoja de control de sesiones de terapia física",
+    "description": "Agentes aplicados, evolución del dolor y asistencia",
+    "study_type": None,
+    "requires_signature": True,
+    "fields": [
+        {"key": "diagnostico_terapia", "label": "Diagnóstico", "type": "text", "group": "Sesión", "required": True, "wide": True},
+        measure("numero_sesion", "Número de sesión", "Sesión"),
+        measure("sesiones_indicadas", "Sesiones indicadas", "Sesión"),
+        measure("eva_inicio", "EVA al inicio de la sesión (0 a 10)", "Evolución del dolor"),
+        measure("eva_final", "EVA al término de la sesión (0 a 10)", "Evolución del dolor"),
+        choice("compresas", "Compresas húmedo calientes o frías", "Agentes aplicados", SI_NO, "No"),
+        choice("ultrasonido", "Ultrasonido terapéutico", "Agentes aplicados", SI_NO, "No"),
+        choice("electroterapia", "Electroterapia (TENS o corrientes)", "Agentes aplicados", SI_NO, "No"),
+        choice("magnetoterapia", "Magnetoterapia", "Agentes aplicados", SI_NO, "No"),
+        choice("laser", "Laserterapia", "Agentes aplicados", SI_NO, "No"),
+        choice("masoterapia", "Masoterapia o terapia manual", "Agentes aplicados", SI_NO, "No"),
+        choice("cinesiterapia", "Cinesiterapia y ejercicios", "Agentes aplicados", SI_NO, "No"),
+        {"key": "zona_tratada", "label": "Zona tratada", "type": "text", "group": "Agentes aplicados", "wide": True},
+        {"key": "evolucion", "label": "Evolución y tolerancia", "type": "textarea", "group": "Evolución", "required": True, "wide": True},
+        {"key": "indicaciones_casa", "label": "Indicaciones para el domicilio", "type": "textarea", "group": "Evolución", "wide": True},
+        {"key": "proxima_sesion", "label": "Próxima sesión", "type": "date", "group": "Evolución"},
+    ],
+    "body": (
+        HEADER_CLINICAL
+        + """<table class="doc-grid">
+<tr><td class="k">Diagnóstico</td><td colspan="3">{{ campo.diagnostico_terapia }}</td></tr>
+<tr><td class="k">Sesión</td><td>{{ campo.numero_sesion }} de {{ campo.sesiones_indicadas }}</td>
+    <td class="k">Zona tratada</td><td>{{ campo.zona_tratada }}</td></tr>
+</table>
+
+<h2>Agentes aplicados</h2>
+<table class="doc-table">
+<tr><th>Agente</th><th>Aplicado</th><th>Agente</th><th>Aplicado</th></tr>
+<tr><td>Compresas</td><td>{{ campo.compresas }}</td><td>Ultrasonido</td><td>{{ campo.ultrasonido }}</td></tr>
+<tr><td>Electroterapia</td><td>{{ campo.electroterapia }}</td><td>Magnetoterapia</td><td>{{ campo.magnetoterapia }}</td></tr>
+<tr><td>Laserterapia</td><td>{{ campo.laser }}</td><td>Masoterapia</td><td>{{ campo.masoterapia }}</td></tr>
+<tr><td>Cinesiterapia</td><td>{{ campo.cinesiterapia }}</td><td></td><td></td></tr>
+</table>
+
+<h2>Evolución</h2>
+<table class="doc-grid">
+<tr><td class="k">EVA al inicio</td><td>{{ campo.eva_inicio }} / 10</td>
+    <td class="k">EVA al término</td><td>{{ campo.eva_final }} / 10</td></tr>
+<tr><td class="k">Próxima sesión</td><td colspan="3">{{ campo.proxima_sesion }}</td></tr>
+</table>
+<p>{{ campo.evolucion|parrafos }}</p>
+<p><strong>Indicaciones para el domicilio:</strong> {{ campo.indicaciones_casa|parrafos }}</p>"""
+        + """<div class="doc-signatures">
+<div class="sign"><div class="line"></div>
+<div class="role">Fisioterapeuta</div>
+<div class="hint">{{ profesional.nombre }} · Colegiatura {{ profesional.cmp }}</div></div>
+<div class="sign"><div class="line"></div><div class="role">Firma del paciente</div>
+<div class="hint">{{ paciente.nombre_completo }}</div></div>
+</div>"""
+    ),
+}
+
+HISTORIA_RECIEN_NACIDO = {
+    "code": "FIC-RN",
+    "version": 1,
+    "family": FICHA,
+    "title": "Historia clínica del recién nacido",
+    "description": "Datos del parto, Apgar, Capurro y antropometría",
+    "study_type": None,
+    "requires_signature": True,
+    "fields": [
+        {"key": "madre", "label": "Nombre de la madre", "type": "text", "group": "Parto", "required": True, "wide": True},
+        {"key": "hora_nacimiento", "label": "Hora de nacimiento", "type": "text", "group": "Parto", "placeholder": "14:35"},
+        choice("tipo_parto", "Tipo de parto", "Parto", opts("Vaginal", "Cesárea"), "Vaginal"),
+        choice("presentacion", "Presentación", "Parto", opts("Cefálica", "Podálica", "Transversa"), "Cefálica"),
+        choice("liquido_amniotico", "Líquido amniótico", "Parto",
+               opts("Claro", "Meconial", "Sanguinolento"), "Claro"),
+        measure("edad_gestacional_rn", "Edad gestacional por Capurro (semanas)", "Parto"),
+        choice("sexo_rn", "Sexo", "Antropometría", opts("Femenino", "Masculino"), "Femenino"),
+        measure("peso_rn", "Peso (gramos)", "Antropometría"),
+        measure("talla_rn", "Talla (cm)", "Antropometría"),
+        measure("perimetro_cefalico", "Perímetro cefálico (cm)", "Antropometría"),
+        measure("perimetro_toracico", "Perímetro torácico (cm)", "Antropometría"),
+        measure("perimetro_abdominal", "Perímetro abdominal (cm)", "Antropometría"),
+        measure("apgar_1", "Apgar al minuto", "Apgar"),
+        measure("apgar_5", "Apgar a los cinco minutos", "Apgar"),
+        choice("reanimacion", "Requirió reanimación", "Apgar", SI_NO, "No"),
+        choice("examen_fisico_rn", "Examen físico general", "Atención inmediata",
+               opts("Sin alteraciones aparentes", "Con hallazgos"), "Sin alteraciones aparentes"),
+        choice("vitamina_k", "Vitamina K aplicada", "Atención inmediata", SI_NO, "Sí"),
+        choice("profilaxis_ocular", "Profilaxis ocular aplicada", "Atención inmediata", SI_NO, "Sí"),
+        choice("contacto_piel", "Contacto piel a piel y lactancia precoz", "Atención inmediata", SI_NO, "Sí"),
+        choice("vacuna_bcg", "Vacuna BCG", "Atención inmediata", SI_NO, "No"),
+        choice("vacuna_hvb", "Vacuna contra la hepatitis B", "Atención inmediata", SI_NO, "No"),
+        {"key": "hallazgos_rn", "label": "Hallazgos y observaciones", "type": "textarea", "group": "Atención inmediata", "default": "Ninguno", "wide": True},
+        {"key": "diagnostico_rn", "label": "Diagnóstico del recién nacido", "type": "textarea", "group": "Conclusión", "required": True, "wide": True},
+    ],
+    "body": (
+        HEADER_CLINICAL
+        + """<h2>Datos del parto</h2>
+<table class="doc-grid">
+<tr><td class="k">Madre</td><td colspan="3">{{ campo.madre }}</td></tr>
+<tr><td class="k">Hora de nacimiento</td><td>{{ campo.hora_nacimiento }}</td>
+    <td class="k">Tipo de parto</td><td>{{ campo.tipo_parto }}</td></tr>
+<tr><td class="k">Presentación</td><td>{{ campo.presentacion }}</td>
+    <td class="k">Líquido amniótico</td><td>{{ campo.liquido_amniotico }}</td></tr>
+<tr><td class="k">Edad gestacional</td><td>{{ campo.edad_gestacional_rn }} semanas por Capurro</td>
+    <td class="k">Sexo</td><td>{{ campo.sexo_rn }}</td></tr>
+</table>
+
+<h2>Antropometría</h2>
+<table class="doc-table">
+<tr><th>Peso</th><th>Talla</th><th>P. cefálico</th><th>P. torácico</th><th>P. abdominal</th></tr>
+<tr><td>{{ campo.peso_rn }} g</td><td>{{ campo.talla_rn }} cm</td><td>{{ campo.perimetro_cefalico }} cm</td>
+    <td>{{ campo.perimetro_toracico }} cm</td><td>{{ campo.perimetro_abdominal }} cm</td></tr>
+</table>
+
+<h2>Apgar</h2>
+<table class="doc-grid">
+<tr><td class="k">Al minuto</td><td>{{ campo.apgar_1 }} / 10</td>
+    <td class="k">A los cinco minutos</td><td>{{ campo.apgar_5 }} / 10</td></tr>
+<tr><td class="k">Requirió reanimación</td><td colspan="3">{{ campo.reanimacion }}</td></tr>
+</table>
+
+<h2>Atención inmediata</h2>
+<table class="doc-grid">
+<tr><td class="k">Examen físico</td><td>{{ campo.examen_fisico_rn }}</td>
+    <td class="k">Vitamina K</td><td>{{ campo.vitamina_k }}</td></tr>
+<tr><td class="k">Profilaxis ocular</td><td>{{ campo.profilaxis_ocular }}</td>
+    <td class="k">Contacto piel a piel</td><td>{{ campo.contacto_piel }}</td></tr>
+<tr><td class="k">Vacuna BCG</td><td>{{ campo.vacuna_bcg }}</td>
+    <td class="k">Vacuna hepatitis B</td><td>{{ campo.vacuna_hvb }}</td></tr>
+</table>
+<p><strong>Hallazgos y observaciones:</strong> {{ campo.hallazgos_rn|parrafos }}</p>
+
+<h2>Diagnóstico</h2>
+<p>{{ campo.diagnostico_rn|parrafos }}</p>"""
+        + SIGN_DOCTOR
+    ),
+}
+
+HISTORIA_CLINICA_GENERAL = {
+    "code": "FIC-HCG",
+    "version": 1,
+    "family": FICHA,
+    "title": "Historia clínica general",
+    "description": "Anamnesis, funciones vitales, examen físico, diagnóstico y plan",
+    "study_type": None,
+    "requires_signature": True,
+    "fields": [
+        {"key": "motivo_consulta", "label": "Motivo de consulta", "type": "text", "group": "Anamnesis", "required": True, "wide": True},
+        {"key": "enfermedad_actual", "label": "Enfermedad actual", "type": "textarea", "group": "Anamnesis", "required": True, "wide": True},
+        measure("tiempo_enfermedad", "Tiempo de enfermedad (días)", "Anamnesis"),
+        choice("forma_inicio", "Forma de inicio", "Anamnesis", opts("Insidioso", "Brusco"), "Insidioso"),
+        choice("curso", "Curso", "Anamnesis", opts("Progresivo", "Estacionario", "Remitente"), "Progresivo"),
+        {"key": "antecedentes_personales", "label": "Antecedentes personales", "type": "textarea", "group": "Antecedentes", "default": "Niega", "wide": True},
+        {"key": "antecedentes_familiares", "label": "Antecedentes familiares", "type": "textarea", "group": "Antecedentes", "default": "Niega", "wide": True},
+        {"key": "alergias_hc", "label": "Alergias referidas", "type": "text", "group": "Antecedentes", "default": "Niega", "wide": True},
+        {"key": "medicacion_habitual", "label": "Medicación habitual", "type": "text", "group": "Antecedentes", "default": "Ninguna", "wide": True},
+        {"key": "pa", "label": "Presión arterial (mmHg)", "type": "text", "group": "Funciones vitales", "placeholder": "120/80"},
+        measure("fc", "Frecuencia cardíaca (lpm)", "Funciones vitales"),
+        measure("fr", "Frecuencia respiratoria (rpm)", "Funciones vitales"),
+        measure("temperatura", "Temperatura (°C)", "Funciones vitales"),
+        measure("saturacion", "Saturación de oxígeno (%)", "Funciones vitales"),
+        measure("peso_hc", "Peso (kg)", "Funciones vitales"),
+        measure("talla_hc", "Talla (cm)", "Funciones vitales"),
+        choice("estado_general", "Estado general", "Examen físico",
+               opts("Bueno", "Regular", "Malo"), "Bueno"),
+        {"key": "piel_tcsc", "label": "Piel y tejido celular subcutáneo", "type": "text", "group": "Examen físico", "default": "Sin alteraciones", "wide": True},
+        {"key": "cabeza_cuello", "label": "Cabeza y cuello", "type": "text", "group": "Examen físico", "default": "Sin alteraciones", "wide": True},
+        {"key": "torax_pulmones", "label": "Tórax y pulmones", "type": "text", "group": "Examen físico", "default": "Murmullo vesicular pasa bien en ambos campos pulmonares", "wide": True},
+        {"key": "cardiovascular", "label": "Cardiovascular", "type": "text", "group": "Examen físico", "default": "Ruidos cardíacos rítmicos, no soplos", "wide": True},
+        {"key": "abdomen", "label": "Abdomen", "type": "text", "group": "Examen físico", "default": "Blando, depresible, no doloroso a la palpación", "wide": True},
+        {"key": "genitourinario", "label": "Genitourinario", "type": "text", "group": "Examen físico", "default": "Puño percusión lumbar negativa", "wide": True},
+        {"key": "neurologico", "label": "Neurológico", "type": "text", "group": "Examen físico", "default": "Despierto, orientado en tiempo, espacio y persona", "wide": True},
+        {"key": "diagnosticos_hc", "label": "Diagnósticos presuntivos", "type": "textarea", "group": "Diagnóstico y plan", "required": True, "wide": True},
+        {"key": "cie10_hc", "label": "CIE-10", "type": "text", "group": "Diagnóstico y plan", "placeholder": "J00"},
+        {"key": "examenes", "label": "Exámenes auxiliares solicitados", "type": "textarea", "group": "Diagnóstico y plan", "default": "Ninguno", "wide": True},
+        {"key": "plan_hc", "label": "Plan de trabajo e indicaciones", "type": "textarea", "group": "Diagnóstico y plan", "required": True, "wide": True},
+    ],
+    "body": (
+        HEADER_CLINICAL
+        + """<h2>Anamnesis</h2>
+<table class="doc-grid">
+<tr><td class="k">Motivo de consulta</td><td colspan="3">{{ campo.motivo_consulta }}</td></tr>
+<tr><td class="k">Tiempo de enfermedad</td><td>{{ campo.tiempo_enfermedad }} días</td>
+    <td class="k">Inicio y curso</td><td>{{ campo.forma_inicio }} · {{ campo.curso }}</td></tr>
+</table>
+<p>{{ campo.enfermedad_actual|parrafos }}</p>
+
+<h2>Antecedentes</h2>
+<table class="doc-grid">
+<tr><td class="k">Personales</td><td colspan="3">{{ campo.antecedentes_personales }}</td></tr>
+<tr><td class="k">Familiares</td><td colspan="3">{{ campo.antecedentes_familiares }}</td></tr>
+<tr><td class="k">Alergias</td><td>{{ campo.alergias_hc }}</td>
+    <td class="k">Medicación habitual</td><td>{{ campo.medicacion_habitual }}</td></tr>
+</table>
+
+<h2>Funciones vitales</h2>
+<table class="doc-table">
+<tr><th>PA</th><th>FC</th><th>FR</th><th>T°</th><th>SatO₂</th><th>Peso</th><th>Talla</th></tr>
+<tr><td>{{ campo.pa }}</td><td>{{ campo.fc }}</td><td>{{ campo.fr }}</td><td>{{ campo.temperatura }}</td>
+    <td>{{ campo.saturacion }} %</td><td>{{ campo.peso_hc }} kg</td><td>{{ campo.talla_hc }} cm</td></tr>
+</table>
+
+<h2>Examen físico</h2>
+<table class="doc-grid">
+<tr><td class="k">Estado general</td><td colspan="3">{{ campo.estado_general }}</td></tr>
+<tr><td class="k">Piel y TCSC</td><td colspan="3">{{ campo.piel_tcsc }}</td></tr>
+<tr><td class="k">Cabeza y cuello</td><td colspan="3">{{ campo.cabeza_cuello }}</td></tr>
+<tr><td class="k">Tórax y pulmones</td><td colspan="3">{{ campo.torax_pulmones }}</td></tr>
+<tr><td class="k">Cardiovascular</td><td colspan="3">{{ campo.cardiovascular }}</td></tr>
+<tr><td class="k">Abdomen</td><td colspan="3">{{ campo.abdomen }}</td></tr>
+<tr><td class="k">Genitourinario</td><td colspan="3">{{ campo.genitourinario }}</td></tr>
+<tr><td class="k">Neurológico</td><td colspan="3">{{ campo.neurologico }}</td></tr>
+</table>
+
+<h2>Diagnóstico</h2>
+<p>{{ campo.diagnosticos_hc|parrafos }}</p>
+<p><strong>CIE-10:</strong> {{ campo.cie10_hc }}</p>
+
+<h2>Exámenes auxiliares</h2>
+<p>{{ campo.examenes|parrafos }}</p>
+
+<h2>Plan de trabajo</h2>
+<p>{{ campo.plan_hc|parrafos }}</p>"""
+        + SIGN_DOCTOR
+    ),
+}
+
+EVOLUCION_HOSPITALIZACION = {
+    "code": "FIC-HOS",
+    "version": 1,
+    "family": FICHA,
+    "title": "Hoja de evolución del paciente hospitalizado",
+    "description": "Evolución diaria, funciones vitales, balance e indicaciones",
+    "study_type": None,
+    "requires_signature": True,
+    "fields": [
+        measure("dia_hospitalizacion", "Día de hospitalización", "Ingreso"),
+        {"key": "cama", "label": "Cama", "type": "text", "group": "Ingreso"},
+        {"key": "diagnostico_hosp", "label": "Diagnóstico", "type": "text", "group": "Ingreso", "required": True, "wide": True},
+        {"key": "pa_hosp", "label": "Presión arterial (mmHg)", "type": "text", "group": "Funciones vitales", "placeholder": "120/80"},
+        measure("fc_hosp", "Frecuencia cardíaca (lpm)", "Funciones vitales"),
+        measure("fr_hosp", "Frecuencia respiratoria (rpm)", "Funciones vitales"),
+        measure("temperatura_hosp", "Temperatura (°C)", "Funciones vitales"),
+        measure("saturacion_hosp", "Saturación de oxígeno (%)", "Funciones vitales"),
+        measure("diuresis", "Diuresis de 24 horas (mL)", "Balance"),
+        measure("ingresos", "Ingresos de 24 horas (mL)", "Balance"),
+        measure("egresos", "Egresos de 24 horas (mL)", "Balance"),
+        choice("via_periferica", "Vía periférica permeable", "Balance", SI_NO, "Sí"),
+        {"key": "subjetivo", "label": "Refiere el paciente", "type": "textarea", "group": "Evolución", "required": True, "wide": True},
+        {"key": "objetivo", "label": "Al examen físico", "type": "textarea", "group": "Evolución", "required": True, "wide": True},
+        {"key": "apreciacion", "label": "Apreciación", "type": "textarea", "group": "Evolución", "wide": True},
+        {"key": "indicaciones_hosp", "label": "Indicaciones del día", "type": "textarea", "group": "Evolución", "required": True, "wide": True},
+    ],
+    "body": (
+        HEADER_CLINICAL
+        + """<table class="doc-grid">
+<tr><td class="k">Día de hospitalización</td><td>{{ campo.dia_hospitalizacion }}</td>
+    <td class="k">Cama</td><td>{{ campo.cama }}</td></tr>
+<tr><td class="k">Diagnóstico</td><td colspan="3">{{ campo.diagnostico_hosp }}</td></tr>
+</table>
+
+<h2>Funciones vitales y balance</h2>
+<table class="doc-table">
+<tr><th>PA</th><th>FC</th><th>FR</th><th>T°</th><th>SatO₂</th><th>Diuresis</th></tr>
+<tr><td>{{ campo.pa_hosp }}</td><td>{{ campo.fc_hosp }}</td><td>{{ campo.fr_hosp }}</td>
+    <td>{{ campo.temperatura_hosp }}</td><td>{{ campo.saturacion_hosp }} %</td><td>{{ campo.diuresis }} mL</td></tr>
+</table>
+<table class="doc-grid">
+<tr><td class="k">Ingresos 24 h</td><td>{{ campo.ingresos }} mL</td>
+    <td class="k">Egresos 24 h</td><td>{{ campo.egresos }} mL</td></tr>
+<tr><td class="k">Vía periférica</td><td colspan="3">{{ campo.via_periferica }}</td></tr>
+</table>
+
+<h2>Evolución</h2>
+<p><strong>Refiere:</strong> {{ campo.subjetivo|parrafos }}</p>
+<p><strong>Al examen:</strong> {{ campo.objetivo|parrafos }}</p>
+<p><strong>Apreciación:</strong> {{ campo.apreciacion|parrafos }}</p>
+
+<h2>Indicaciones</h2>
+<p>{{ campo.indicaciones_hosp|parrafos }}</p>"""
+        + SIGN_DOCTOR
+    ),
+}
+
+REPORTE_OPERATORIO = {
+    "code": "FIC-OPE",
+    "version": 1,
+    "family": FICHA,
+    "title": "Reporte operatorio",
+    "description": "Equipo quirúrgico, diagnósticos, técnica, hallazgos y destino",
+    "study_type": None,
+    "requires_signature": True,
+    "fields": [
+        {"key": "cirujano", "label": "Cirujano principal", "type": "text", "group": "Equipo", "required": True, "wide": True},
+        {"key": "ayudante1", "label": "Primer ayudante", "type": "text", "group": "Equipo"},
+        {"key": "ayudante2", "label": "Segundo ayudante", "type": "text", "group": "Equipo"},
+        {"key": "instrumentista", "label": "Instrumentista", "type": "text", "group": "Equipo"},
+        {"key": "circulante", "label": "Circulante", "type": "text", "group": "Equipo"},
+        {"key": "anestesiologo", "label": "Anestesiólogo", "type": "text", "group": "Equipo"},
+        choice("tipo_anestesia", "Tipo de anestesia", "Equipo",
+               opts("Local", "Regional", "Raquídea", "General"), "Local"),
+        choice("tipo_cirugia", "Tipo de cirugía", "Acto quirúrgico", opts("Electiva", "Emergencia"), "Electiva"),
+        {"key": "hora_inicio", "label": "Hora de inicio", "type": "text", "group": "Acto quirúrgico", "placeholder": "09:15"},
+        {"key": "hora_termino", "label": "Hora de término", "type": "text", "group": "Acto quirúrgico", "placeholder": "10:40"},
+        {"key": "tiempo_operatorio", "label": "Tiempo operatorio", "type": "text", "group": "Acto quirúrgico", "placeholder": "1 hora 25 minutos"},
+        {"key": "dx_preoperatorio", "label": "Diagnóstico preoperatorio", "type": "textarea", "group": "Diagnósticos", "required": True, "wide": True},
+        {"key": "dx_postoperatorio", "label": "Diagnóstico postoperatorio", "type": "textarea", "group": "Diagnósticos", "required": True, "wide": True},
+        {"key": "cirugia_programada", "label": "Cirugía programada", "type": "text", "group": "Procedimiento", "required": True, "wide": True},
+        {"key": "cirugia_realizada", "label": "Cirugía realizada", "type": "text", "group": "Procedimiento", "required": True, "wide": True},
+        {"key": "tecnica", "label": "Descripción de la técnica quirúrgica", "type": "textarea", "group": "Procedimiento", "required": True, "wide": True},
+        {"key": "hallazgos_qx", "label": "Hallazgos", "type": "textarea", "group": "Procedimiento", "required": True, "wide": True},
+        {"key": "incidentes", "label": "Incidentes y accidentes", "type": "textarea", "group": "Procedimiento", "default": "Ninguno", "wide": True},
+        {"key": "complicaciones", "label": "Complicaciones", "type": "textarea", "group": "Procedimiento", "default": "Ninguna", "wide": True},
+        choice("anatomia_patologica", "Envío a anatomía patológica", "Cierre", SI_NO, "No"),
+        measure("piezas", "Número de piezas enviadas", "Cierre"),
+        choice("implantes", "Uso de implantes", "Cierre", SI_NO, "No"),
+        choice("destino", "Destino del paciente", "Cierre",
+               opts("Recuperación", "Hospitalización", "Alta el mismo día", "Referido"), "Recuperación"),
+    ],
+    "body": (
+        HEADER_CLINICAL
+        + """<h2>Equipo quirúrgico</h2>
+<table class="doc-grid">
+<tr><td class="k">Cirujano principal</td><td colspan="3">{{ campo.cirujano }}</td></tr>
+<tr><td class="k">Primer ayudante</td><td>{{ campo.ayudante1 }}</td>
+    <td class="k">Segundo ayudante</td><td>{{ campo.ayudante2 }}</td></tr>
+<tr><td class="k">Instrumentista</td><td>{{ campo.instrumentista }}</td>
+    <td class="k">Circulante</td><td>{{ campo.circulante }}</td></tr>
+<tr><td class="k">Anestesiólogo</td><td>{{ campo.anestesiologo }}</td>
+    <td class="k">Tipo de anestesia</td><td>{{ campo.tipo_anestesia }}</td></tr>
+<tr><td class="k">Tipo de cirugía</td><td>{{ campo.tipo_cirugia }}</td>
+    <td class="k">Tiempo operatorio</td><td>{{ campo.tiempo_operatorio }}</td></tr>
+<tr><td class="k">Hora de inicio</td><td>{{ campo.hora_inicio }}</td>
+    <td class="k">Hora de término</td><td>{{ campo.hora_termino }}</td></tr>
+</table>
+
+<h2>Diagnósticos</h2>
+<p><strong>Preoperatorio:</strong> {{ campo.dx_preoperatorio|parrafos }}</p>
+<p><strong>Postoperatorio:</strong> {{ campo.dx_postoperatorio|parrafos }}</p>
+
+<h2>Procedimiento</h2>
+<table class="doc-grid">
+<tr><td class="k">Cirugía programada</td><td colspan="3">{{ campo.cirugia_programada }}</td></tr>
+<tr><td class="k">Cirugía realizada</td><td colspan="3">{{ campo.cirugia_realizada }}</td></tr>
+</table>
+<p>{{ campo.tecnica|parrafos }}</p>
+
+<h2>Hallazgos</h2>
+<p>{{ campo.hallazgos_qx|parrafos }}</p>
+<p><strong>Incidentes:</strong> {{ campo.incidentes|parrafos }}</p>
+<p><strong>Complicaciones:</strong> {{ campo.complicaciones|parrafos }}</p>
+
+<h2>Cierre</h2>
+<table class="doc-grid">
+<tr><td class="k">Anatomía patológica</td><td>{{ campo.anatomia_patologica }}</td>
+    <td class="k">Número de piezas</td><td>{{ campo.piezas }}</td></tr>
+<tr><td class="k">Implantes</td><td>{{ campo.implantes }}</td>
+    <td class="k">Destino del paciente</td><td>{{ campo.destino }}</td></tr>
+</table>"""
+        + """<div class="doc-signatures">
+<div class="sign"><div class="line"></div><div class="role">Cirujano principal</div>
+<div class="hint">{{ campo.cirujano }}</div></div>
+<div class="sign"><div class="line"></div><div class="role">Anestesiólogo</div>
+<div class="hint">{{ campo.anestesiologo }}</div></div>
+</div>"""
+    ),
+}
+
+_ALDRETE_ITEMS: tuple[tuple[str, str, list[dict[str, str]]], ...] = (
+    ("actividad", "Actividad motora", [
+        {"value": "2", "label": "2 — Mueve las cuatro extremidades"},
+        {"value": "1", "label": "1 — No mueve dos extremidades"},
+        {"value": "0", "label": "0 — No mueve las extremidades"},
+    ]),
+    ("respiracion", "Respiración", [
+        {"value": "2", "label": "2 — Respira y tose normalmente"},
+        {"value": "1", "label": "1 — Disnea o respiración limitada"},
+        {"value": "0", "label": "0 — Apnea"},
+    ]),
+    ("circulacion", "Circulación", [
+        {"value": "2", "label": "2 — PA hasta 20 % del nivel preanestésico"},
+        {"value": "1", "label": "1 — PA entre 20 y 50 % del nivel preanestésico"},
+        {"value": "0", "label": "0 — PA más del 50 % del nivel preanestésico"},
+    ]),
+    ("conciencia", "Conciencia", [
+        {"value": "2", "label": "2 — Completamente despierto"},
+        {"value": "1", "label": "1 — Despierta al llamado"},
+        {"value": "0", "label": "0 — No responde"},
+    ]),
+    ("saturacion_aldrete", "Saturación", [
+        {"value": "2", "label": "2 — SpO₂ mayor de 92 % con aire ambiente"},
+        {"value": "1", "label": "1 — Necesita oxígeno para mantener SpO₂ sobre 90 %"},
+        {"value": "0", "label": "0 — SpO₂ menor de 90 % con oxígeno suplementario"},
+    ]),
+)
+
+CUIDADOS_URPA = {
+    "code": "FIC-URP",
+    "version": 1,
+    "family": FICHA,
+    "title": "Hoja de cuidados de enfermería en recuperación posanestésica",
+    "description": "Escala de Aldrete modificada, dolor, cuidados y alta de la URPA",
+    "study_type": None,
+    "requires_signature": True,
+    "fields": [
+        {"key": "operacion", "label": "Operación realizada", "type": "text", "group": "Ingreso", "required": True, "wide": True},
+        {"key": "anestesia_urpa", "label": "Tipo de anestesia", "type": "text", "group": "Ingreso"},
+        {"key": "hora_ingreso_urpa", "label": "Hora de ingreso a la URPA", "type": "text", "group": "Ingreso", "placeholder": "10:45"},
+        {"key": "cama_urpa", "label": "Cama", "type": "text", "group": "Ingreso"},
+        *[
+            {"key": key, "label": label, "type": "select", "group": "Escala de Aldrete",
+             "options": options, "default": "2", "wide": True}
+            for key, label, options in _ALDRETE_ITEMS
+        ],
+        {
+            "key": "aldrete",
+            "label": "Puntaje de Aldrete",
+            "type": "computed",
+            "group": "Escala de Aldrete",
+            "sum": [key for key, _, _ in _ALDRETE_ITEMS],
+            "help": "Un puntaje de 9 o más permite el alta de la unidad de recuperación.",
+        },
+        measure("eva_urpa", "Escala visual analógica del dolor (0 a 10)", "Valoración"),
+        {"key": "pa_urpa", "label": "Presión arterial (mmHg)", "type": "text", "group": "Valoración", "placeholder": "110/70"},
+        measure("fc_urpa", "Frecuencia cardíaca (lpm)", "Valoración"),
+        measure("fr_urpa", "Frecuencia respiratoria (rpm)", "Valoración"),
+        measure("temperatura_urpa", "Temperatura (°C)", "Valoración"),
+        choice("nauseas", "Náuseas o vómitos", "Valoración", SI_NO, "No"),
+        choice("sangrado", "Sangrado en la herida operatoria", "Valoración", SI_NO, "No"),
+        choice("drenajes", "Drenajes o catéteres", "Valoración", SI_NO, "No"),
+        {"key": "terapeutica", "label": "Terapéutica administrada", "type": "textarea", "group": "Cuidados", "wide": True},
+        {"key": "cuidados", "label": "Cuidados de enfermería brindados", "type": "textarea", "group": "Cuidados", "required": True, "wide": True},
+        {"key": "hora_alta_urpa", "label": "Hora de alta de la URPA", "type": "text", "group": "Alta", "placeholder": "12:30"},
+        choice("destino_urpa", "Destino", "Alta",
+               opts("Hospitalización", "Alta domiciliaria", "Referido"), "Hospitalización"),
+    ],
+    "body": (
+        HEADER_CLINICAL
+        + """<table class="doc-grid">
+<tr><td class="k">Operación realizada</td><td colspan="3">{{ campo.operacion }}</td></tr>
+<tr><td class="k">Tipo de anestesia</td><td>{{ campo.anestesia_urpa }}</td>
+    <td class="k">Cama</td><td>{{ campo.cama_urpa }}</td></tr>
+<tr><td class="k">Hora de ingreso</td><td>{{ campo.hora_ingreso_urpa }}</td>
+    <td class="k">Hora de alta</td><td>{{ campo.hora_alta_urpa }}</td></tr>
+</table>
+
+<h2>Escala de Aldrete modificada</h2>
+<table class="doc-table">
+<tr><th>Categoría</th><th>Puntaje</th></tr>
+<tr><td>Actividad motora</td><td>{{ campo.actividad }}</td></tr>
+<tr><td>Respiración</td><td>{{ campo.respiracion }}</td></tr>
+<tr><td>Circulación</td><td>{{ campo.circulacion }}</td></tr>
+<tr><td>Conciencia</td><td>{{ campo.conciencia }}</td></tr>
+<tr><td>Saturación</td><td>{{ campo.saturacion_aldrete }}</td></tr>
+<tr><td><strong>Total</strong></td><td><strong>{{ campo.aldrete }} / 10</strong></td></tr>
+</table>
+<p class="doc-note">Un puntaje de 9 o más permite el alta de la unidad de recuperación
+posanestésica.</p>
+
+<h2>Valoración de enfermería</h2>
+<table class="doc-table">
+<tr><th>PA</th><th>FC</th><th>FR</th><th>T°</th><th>EVA</th></tr>
+<tr><td>{{ campo.pa_urpa }}</td><td>{{ campo.fc_urpa }}</td><td>{{ campo.fr_urpa }}</td>
+    <td>{{ campo.temperatura_urpa }}</td><td>{{ campo.eva_urpa }} / 10</td></tr>
+</table>
+<table class="doc-grid">
+<tr><td class="k">Náuseas o vómitos</td><td>{{ campo.nauseas }}</td>
+    <td class="k">Sangrado</td><td>{{ campo.sangrado }}</td></tr>
+<tr><td class="k">Drenajes o catéteres</td><td>{{ campo.drenajes }}</td>
+    <td class="k">Destino</td><td>{{ campo.destino_urpa }}</td></tr>
+</table>
+
+<h2>Terapéutica y cuidados</h2>
+<p>{{ campo.terapeutica|parrafos }}</p>
+<p>{{ campo.cuidados|parrafos }}</p>"""
+        + """<div class="doc-signatures">
+<div class="sign"><div class="line"></div>
+<div class="role">Enfermera(o) de la URPA</div>
+<div class="hint">{{ profesional.nombre }} · Colegiatura {{ profesional.cmp }}</div></div>
+</div>"""
+    ),
+}
+
+
 # --- Familia C · Consentimientos y declaraciones ---------------------------
 
 CI_PROCEDIMIENTOS = {
@@ -1929,6 +3385,150 @@ sin ningún tipo de sujeción.</p>"""
     ),
 }
 
+CI_MENOR = {
+    "code": "CI-MEN",
+    "version": 1,
+    "family": CONSENTIMIENTO,
+    "title": "Consentimiento informado para menor de edad",
+    "description": "Autorización otorgada por el padre, la madre o el apoderado",
+    "study_type": None,
+    "requires_signature": True,
+    "fields": [
+        {"key": "apoderado", "label": "Padre, madre o apoderado", "type": "text", "group": "Apoderado", "required": True, "wide": True},
+        {"key": "apoderado_documento", "label": "Documento de identidad del apoderado", "type": "text", "group": "Apoderado", "required": True},
+        {"key": "parentesco", "label": "Parentesco con el menor", "type": "select", "group": "Apoderado",
+         "options": opts("Padre", "Madre", "Tutor", "Apoderado"), "default": "Madre"},
+        {"key": "apoderado_telefono", "label": "Teléfono del apoderado", "type": "text", "group": "Apoderado"},
+        {"key": "procedimiento_menor", "label": "Procedimiento, examen o tratamiento", "type": "textarea",
+         "group": "Procedimiento", "required": True, "wide": True},
+        {"key": "riesgos_menor", "label": "Riesgos informados", "type": "textarea", "group": "Procedimiento", "wide": True},
+    ],
+    "body": (
+        PLACE_AND_DATE
+        + """<p>Yo, <strong>{{ campo.apoderado }}</strong>, identificado(a) con documento de
+identidad N.° {{ campo.apoderado_documento }}, en mi condición de {{ campo.parentesco|minus }}
+del menor <strong>{{ paciente.nombre_completo }}</strong>, de {{ paciente.edad }} de edad e
+historia clínica N.° {{ paciente.historia }}, declaro que he recibido información clara y
+en lenguaje sencillo sobre:</p>
+
+<p style="padding-left:16px"><em>{{ campo.procedimiento_menor|parrafos }}</em></p>
+
+<p><strong>Riesgos informados:</strong> {{ campo.riesgos_menor|parrafos }}</p>
+
+<p>El(la) profesional <strong>{{ profesional.nombre }}</strong> (CMP {{ profesional.cmp }})
+ha absuelto todas mis preguntas. Comprendo que la actividad médica no puede garantizar
+resultados y que, de presentarse una situación de emergencia durante el procedimiento, el
+equipo actuará conforme a la lex artis en beneficio del menor.</p>
+
+<p>En pleno uso de mis facultades y de manera libre y voluntaria, <strong>AUTORIZO</strong>
+que se realice el procedimiento descrito en {{ clinica.nombre }}. Cualquier comunicación
+urgente puede dirigirse al teléfono {{ campo.apoderado_telefono }}.</p>"""
+        + """<div class="doc-signatures">
+<div class="sign"><div class="line"></div>
+<div class="role">Padre, madre o apoderado</div>
+<div class="hint">{{ campo.apoderado }} · {{ campo.apoderado_documento }}</div></div>
+<div class="sign"><div class="line"></div><div class="role">Firma del médico</div>
+<div class="hint">{{ profesional.nombre }} · CMP {{ profesional.cmp }}</div></div>
+</div>"""
+    ),
+}
+
+CI_QUIRURGICO = {
+    "code": "CI-QX",
+    "version": 1,
+    "family": CONSENTIMIENTO,
+    "title": "Consentimiento informado para acto quirúrgico y anestésico",
+    "description": "Autorización de la intervención, la anestesia y las transfusiones",
+    "study_type": None,
+    "requires_signature": True,
+    "fields": [
+        {"key": "intervencion", "label": "Intervención quirúrgica propuesta", "type": "textarea",
+         "group": "Intervención", "required": True, "wide": True},
+        {"key": "diagnostico_qx", "label": "Diagnóstico que la motiva", "type": "text", "group": "Intervención", "required": True, "wide": True},
+        choice("anestesia_ci", "Tipo de anestesia previsto", "Intervención",
+               opts("Local", "Regional", "Raquídea", "General"), "Local"),
+        {"key": "alternativas", "label": "Alternativas de tratamiento explicadas", "type": "textarea",
+         "group": "Información", "default": "Tratamiento médico conservador y observación", "wide": True},
+        {"key": "riesgos_qx", "label": "Riesgos propios de esta intervención", "type": "textarea",
+         "group": "Información", "required": True, "wide": True},
+        choice("transfusion", "Autoriza transfusión sanguínea de ser necesaria", "Información", opts("Sí", "No"), "Sí"),
+        choice("ampliacion", "Autoriza ampliar el procedimiento ante un hallazgo imprevisto", "Información", opts("Sí", "No"), "Sí"),
+        {"key": "acompanante", "label": "Familiar o acompañante responsable", "type": "text", "group": "Información", "wide": True},
+    ],
+    "body": (
+        PLACE_AND_DATE
+        + """<p>Yo, <strong>{{ paciente.nombre_completo }}</strong>, identificado(a) con
+{{ paciente.tipo_documento }} N.° {{ paciente.documento }}, historia clínica N.°
+{{ paciente.historia }}, declaro que el(la) profesional <strong>{{ profesional.nombre }}</strong>
+(CMP {{ profesional.cmp }}) me ha explicado, en lenguaje claro y sencillo, que por el
+diagnóstico de <strong>{{ campo.diagnostico_qx }}</strong> requiero la siguiente
+intervención:</p>
+
+<p style="padding-left:16px"><em>{{ campo.intervencion|parrafos }}</em></p>
+
+<table class="doc-grid">
+<tr><td class="k">Tipo de anestesia</td><td>{{ campo.anestesia_ci }}</td>
+    <td class="k">Acompañante responsable</td><td>{{ campo.acompanante }}</td></tr>
+</table>
+
+<p><strong>Alternativas explicadas:</strong> {{ campo.alternativas|parrafos }}</p>
+<p><strong>Riesgos de la intervención:</strong> {{ campo.riesgos_qx|parrafos }}</p>
+
+<p>Se me ha informado además sobre los riesgos generales de todo acto quirúrgico y
+anestésico: infección de la herida, sangrado, reacción adversa a los medicamentos y a la
+anestesia, tromboembolismo y, excepcionalmente, complicaciones que pueden comprometer la
+vida. Entiendo que la medicina no es una ciencia exacta y que no se me puede garantizar
+un resultado.</p>
+
+<table class="doc-grid">
+<tr><td class="k">Autoriza transfusión sanguínea</td><td>{{ campo.transfusion }}</td>
+    <td class="k">Autoriza ampliar el procedimiento</td><td>{{ campo.ampliacion }}</td></tr>
+</table>
+
+<p>He tenido la oportunidad de formular preguntas y todas han sido absueltas. En pleno uso
+de mis facultades físicas y mentales, de manera libre y voluntaria, <strong>AUTORIZO</strong>
+la realización de la intervención descrita y de la anestesia que requiera. Conozco que puedo
+revocar este consentimiento en cualquier momento antes del procedimiento.</p>"""
+        + SIGN_PATIENT_DOCTOR
+    ),
+}
+
+AUTORIZACION_TRASLADO_PACIENTE = {
+    "code": "CI-TRP",
+    "version": 1,
+    "family": CONSENTIMIENTO,
+    "title": "Solicitud y autorización de traslado del propio paciente",
+    "description": "El paciente, consciente y orientado, pide su traslado a otro establecimiento",
+    "study_type": None,
+    "requires_signature": True,
+    "fields": [
+        {"key": "destino_traslado", "label": "Establecimiento o ciudad de destino", "type": "text",
+         "group": "Traslado", "required": True, "wide": True},
+        {"key": "motivo_traslado", "label": "Motivo del traslado", "type": "textarea", "group": "Traslado", "required": True, "wide": True},
+        choice("orientado", "Estado de conciencia", "Traslado", ORIENTADO, "Orientado"),
+        {"key": "acompanante_traslado", "label": "Persona que lo acompaña", "type": "text", "group": "Traslado", "wide": True},
+    ],
+    "body": (
+        PLACE_AND_DATE
+        + """<p>Yo, <strong>{{ paciente.nombre_completo }}</strong>, identificado(a) con
+{{ paciente.tipo_documento }} N.° {{ paciente.documento }}, de {{ paciente.edad }} de edad,
+con domicilio en {{ paciente.direccion }}, encontrándome <strong>{{ campo.orientado|minus }}</strong>
+en tiempo, espacio y persona, y en plena capacidad de mis facultades mentales, considerando
+mi actual estado de salud:</p>
+
+<p><strong>SOLICITO Y AUTORIZO</strong> mi traslado a
+<strong>{{ campo.destino_traslado }}</strong> para continuar con mi tratamiento médico, por
+el siguiente motivo:</p>
+
+<p style="padding-left:16px"><em>{{ campo.motivo_traslado|parrafos }}</em></p>
+
+<p>Estoy de acuerdo y doy mi consentimiento para ser trasladado(a), habiendo sido informado(a)
+de los riesgos que el traslado implica en mi condición actual. Me acompaña durante el
+traslado {{ campo.acompanante_traslado }}.</p>"""
+        + SIGN_PATIENT_DOCTOR
+    ),
+}
+
 ALTA_VOLUNTARIA = {
     "code": "ALTA-VOL",
     "version": 1,
@@ -2084,6 +3684,503 @@ HOJA_TRASLADO = {
     ),
 }
 
+ALTA_MEDICA = {
+    "code": "ALTA-MED",
+    "version": 1,
+    "family": ADMINISTRATIVO,
+    "title": "Alta médica y epicrisis",
+    "description": "Resumen del internamiento, diagnósticos de egreso e indicaciones",
+    "study_type": None,
+    "requires_signature": True,
+    "fields": [
+        {"key": "fecha_ingreso_alta", "label": "Fecha de ingreso", "type": "date", "group": "Internamiento"},
+        measure("dias_estancia", "Días de estancia", "Internamiento"),
+        {"key": "dx_ingreso", "label": "Diagnóstico de ingreso", "type": "text", "group": "Internamiento", "required": True, "wide": True},
+        {"key": "resumen", "label": "Resumen de la evolución", "type": "textarea", "group": "Evolución", "required": True, "wide": True},
+        {"key": "procedimientos_alta", "label": "Procedimientos realizados", "type": "textarea", "group": "Evolución", "default": "Ninguno", "wide": True},
+        {"key": "examenes_alta", "label": "Exámenes auxiliares relevantes", "type": "textarea", "group": "Evolución", "default": "Ninguno", "wide": True},
+        {"key": "dx_egreso", "label": "Diagnósticos de egreso", "type": "textarea", "group": "Egreso", "required": True, "wide": True},
+        {"key": "cie10_alta", "label": "CIE-10", "type": "text", "group": "Egreso", "placeholder": "A09"},
+        choice("condicion_egreso", "Condición al egreso", "Egreso",
+               opts("Curado", "Mejorado", "Estacionario", "Referido", "Fallecido"), "Mejorado"),
+        {"key": "tratamiento_alta", "label": "Tratamiento al alta", "type": "textarea", "group": "Indicaciones", "required": True, "wide": True},
+        {"key": "recomendaciones", "label": "Recomendaciones y signos de alarma", "type": "textarea", "group": "Indicaciones", "required": True, "wide": True},
+        {"key": "control_alta", "label": "Próximo control", "type": "date", "group": "Indicaciones"},
+    ],
+    "body": (
+        HEADER_CLINICAL
+        + """<table class="doc-grid">
+<tr><td class="k">Fecha de ingreso</td><td>{{ campo.fecha_ingreso_alta }}</td>
+    <td class="k">Fecha de egreso</td><td>{{ fecha.hoy }}</td></tr>
+<tr><td class="k">Días de estancia</td><td>{{ campo.dias_estancia }}</td>
+    <td class="k">Condición al egreso</td><td>{{ campo.condicion_egreso }}</td></tr>
+<tr><td class="k">Diagnóstico de ingreso</td><td colspan="3">{{ campo.dx_ingreso }}</td></tr>
+</table>
+
+<h2>Resumen de la evolución</h2>
+<p>{{ campo.resumen|parrafos }}</p>
+<p><strong>Procedimientos realizados:</strong> {{ campo.procedimientos_alta|parrafos }}</p>
+<p><strong>Exámenes auxiliares:</strong> {{ campo.examenes_alta|parrafos }}</p>
+
+<h2>Diagnósticos de egreso</h2>
+<p>{{ campo.dx_egreso|parrafos }}</p>
+<p><strong>CIE-10:</strong> {{ campo.cie10_alta }}</p>
+
+<h2>Indicaciones al alta</h2>
+<p>{{ campo.tratamiento_alta|parrafos }}</p>
+<p><strong>Recomendaciones y signos de alarma:</strong> {{ campo.recomendaciones|parrafos }}</p>
+<p><strong>Próximo control:</strong> {{ campo.control_alta }}</p>"""
+        + SIGN_DOCTOR
+    ),
+}
+
+HOJA_REFERENCIA = {
+    "code": "REF",
+    "version": 1,
+    "family": ADMINISTRATIVO,
+    "title": "Hoja de referencia",
+    "description": "Derivación del paciente a otro establecimiento de salud",
+    "study_type": None,
+    "requires_signature": True,
+    "fields": [
+        {"key": "establecimiento_destino", "label": "Establecimiento de destino", "type": "text",
+         "group": "Referencia", "required": True, "wide": True},
+        {"key": "servicio_destino", "label": "Servicio o especialidad de destino", "type": "text", "group": "Referencia", "required": True, "wide": True},
+        choice("prioridad", "Prioridad", "Referencia", opts("Emergencia", "Urgencia", "Consulta externa"), "Consulta externa"),
+        {"key": "motivo_referencia", "label": "Motivo de la referencia", "type": "textarea", "group": "Referencia", "required": True, "wide": True},
+        {"key": "resumen_clinico", "label": "Resumen del cuadro clínico", "type": "textarea", "group": "Condición del paciente", "required": True, "wide": True},
+        {"key": "funciones_vitales_ref", "label": "Funciones vitales al momento de la referencia", "type": "text",
+         "group": "Condición del paciente", "placeholder": "PA 120/80 · FC 80 · FR 18 · T° 36,8 · SatO₂ 98 %", "wide": True},
+        {"key": "dx_referencia", "label": "Diagnóstico presuntivo", "type": "text", "group": "Condición del paciente", "required": True, "wide": True},
+        {"key": "cie10_ref", "label": "CIE-10", "type": "text", "group": "Condición del paciente", "placeholder": "K35"},
+        {"key": "tratamiento_recibido", "label": "Tratamiento recibido", "type": "textarea", "group": "Condición del paciente", "default": "Ninguno", "wide": True},
+        {"key": "examenes_adjuntos", "label": "Exámenes que se adjuntan", "type": "text", "group": "Condición del paciente", "default": "Ninguno", "wide": True},
+        choice("acompanado", "Traslado acompañado por personal de salud", "Condición del paciente", SI_NO, "No"),
+    ],
+    "body": (
+        HEADER_CLINICAL
+        + """<h2>Establecimiento al que se refiere</h2>
+<table class="doc-grid">
+<tr><td class="k">Establecimiento</td><td>{{ campo.establecimiento_destino }}</td>
+    <td class="k">Servicio</td><td>{{ campo.servicio_destino }}</td></tr>
+<tr><td class="k">Prioridad</td><td>{{ campo.prioridad }}</td>
+    <td class="k">Traslado acompañado</td><td>{{ campo.acompanado }}</td></tr>
+</table>
+<p>{{ campo.motivo_referencia|parrafos }}</p>
+
+<h2>Condición del paciente</h2>
+<table class="doc-grid">
+<tr><td class="k">Diagnóstico</td><td>{{ campo.dx_referencia }}</td>
+    <td class="k">CIE-10</td><td>{{ campo.cie10_ref }}</td></tr>
+<tr><td class="k">Funciones vitales</td><td colspan="3">{{ campo.funciones_vitales_ref }}</td></tr>
+</table>
+<p>{{ campo.resumen_clinico|parrafos }}</p>
+<p><strong>Tratamiento recibido:</strong> {{ campo.tratamiento_recibido|parrafos }}</p>
+<p><strong>Se adjunta:</strong> {{ campo.examenes_adjuntos }}</p>"""
+        + SIGN_DOCTOR
+    ),
+}
+
+HOJA_INTERCONSULTA = {
+    "code": "ICS",
+    "version": 1,
+    "family": ADMINISTRATIVO,
+    "title": "Hoja de interconsulta",
+    "description": "Solicitud a otra especialidad y espacio para su respuesta",
+    "study_type": None,
+    "requires_signature": True,
+    "fields": [
+        {"key": "especialidad_solicitada", "label": "Especialidad a la que se solicita", "type": "text",
+         "group": "Solicitud", "required": True, "wide": True},
+        {"key": "puesto_trabajo", "label": "Puesto de trabajo", "type": "text", "group": "Solicitud"},
+        {"key": "motivo_interconsulta", "label": "Motivo de la interconsulta", "type": "textarea",
+         "group": "Solicitud", "required": True, "wide": True},
+        {"key": "resumen_interconsulta", "label": "Resumen clínico y exámenes relevantes", "type": "textarea",
+         "group": "Solicitud", "wide": True},
+        {"key": "evaluacion_respuesta", "label": "Evaluación del especialista", "type": "textarea", "group": "Respuesta", "wide": True},
+        {"key": "diagnostico_respuesta", "label": "Diagnóstico", "type": "textarea", "group": "Respuesta", "wide": True},
+        {"key": "indicaciones_respuesta", "label": "Indicaciones médicas", "type": "textarea", "group": "Respuesta", "wide": True},
+        {"key": "restricciones", "label": "Restricciones laborales", "type": "text", "group": "Respuesta", "default": "Ninguna", "wide": True},
+        {"key": "especialista", "label": "Especialista que responde", "type": "text", "group": "Respuesta", "wide": True},
+    ],
+    "body": (
+        HEADER_CLINICAL
+        + """<h2>Solicitud</h2>
+<table class="doc-grid">
+<tr><td class="k">Especialidad</td><td>{{ campo.especialidad_solicitada }}</td>
+    <td class="k">Puesto de trabajo</td><td>{{ campo.puesto_trabajo }}</td></tr>
+</table>
+<p>{{ campo.motivo_interconsulta|parrafos }}</p>
+<p>{{ campo.resumen_interconsulta|parrafos }}</p>
+
+<h2>Respuesta a la interconsulta</h2>
+<p><strong>Evaluación:</strong> {{ campo.evaluacion_respuesta|parrafos }}</p>
+<p><strong>Diagnóstico:</strong> {{ campo.diagnostico_respuesta|parrafos }}</p>
+<p><strong>Indicaciones médicas:</strong> {{ campo.indicaciones_respuesta|parrafos }}</p>
+<p><strong>Restricciones laborales:</strong> {{ campo.restricciones }}</p>"""
+        + """<div class="doc-signatures">
+<div class="sign"><div class="line"></div><div class="role">Médico que solicita</div>
+<div class="hint">{{ profesional.nombre }} · CMP {{ profesional.cmp }}</div></div>
+<div class="sign"><div class="line"></div><div class="role">Especialista que responde</div>
+<div class="hint">{{ campo.especialista }}</div></div>
+</div>"""
+    ),
+}
+
+CERTIFICADO_MEDICO = {
+    "code": "CERT-MED",
+    "version": 1,
+    "family": ADMINISTRATIVO,
+    "title": "Certificado médico",
+    "description": "Constancia del estado de salud y del diagnóstico",
+    "study_type": None,
+    "requires_signature": True,
+    "fields": [
+        {"key": "hallazgos_cert", "label": "Hallazgos del examen clínico", "type": "textarea",
+         "group": "Certificación", "required": True, "wide": True},
+        {"key": "diagnostico_cert", "label": "Diagnóstico", "type": "text", "group": "Certificación", "required": True, "wide": True},
+        {"key": "cie10_cert", "label": "CIE-10", "type": "text", "group": "Certificación", "placeholder": "Z00.0"},
+        {"key": "finalidad", "label": "Finalidad del certificado", "type": "text", "group": "Certificación",
+         "required": True, "placeholder": "Presentar ante su centro de trabajo", "wide": True},
+        {"key": "observaciones_cert", "label": "Observaciones", "type": "textarea", "group": "Certificación", "default": "Ninguna", "wide": True},
+    ],
+    "body": (
+        """<p>El profesional que suscribe <strong>CERTIFICA</strong> que
+<strong>{{ paciente.nombre_completo }}</strong>, identificado(a) con
+{{ paciente.tipo_documento }} N.° {{ paciente.documento }}, de {{ paciente.edad }} de edad,
+ha sido evaluado(a) en {{ clinica.nombre }} el día {{ fecha.hoy }}, encontrándose lo
+siguiente:</p>
+
+<p>{{ campo.hallazgos_cert|parrafos }}</p>
+
+<table class="doc-grid">
+<tr><td class="k">Diagnóstico</td><td>{{ campo.diagnostico_cert }}</td>
+    <td class="k">CIE-10</td><td>{{ campo.cie10_cert }}</td></tr>
+</table>
+
+<p><strong>Observaciones:</strong> {{ campo.observaciones_cert|parrafos }}</p>
+
+<p>Se expide el presente certificado a solicitud del interesado, con la finalidad de
+{{ campo.finalidad|minus }}, para los fines que estime conveniente.</p>"""
+        + PLACE_AND_DATE
+        + SIGN_DOCTOR
+    ),
+}
+
+DESCANSO_MEDICO = {
+    "code": "DESC-MED",
+    "version": 1,
+    "family": ADMINISTRATIVO,
+    "title": "Certificado de descanso médico",
+    "description": "Días de reposo indicados y fecha de reincorporación",
+    "study_type": None,
+    "requires_signature": True,
+    "fields": [
+        {"key": "diagnostico_descanso", "label": "Diagnóstico", "type": "text", "group": "Descanso", "required": True, "wide": True},
+        {"key": "cie10_descanso", "label": "CIE-10", "type": "text", "group": "Descanso", "placeholder": "J06"},
+        measure("dias_descanso", "Días de descanso", "Descanso"),
+        {"key": "desde", "label": "Desde", "type": "date", "group": "Descanso", "required": True},
+        {"key": "hasta", "label": "Hasta", "type": "date", "group": "Descanso", "required": True},
+        choice("tipo_descanso", "Tipo de descanso", "Descanso",
+               opts("Reposo domiciliario", "Reposo relativo", "Hospitalización"), "Reposo domiciliario"),
+        {"key": "indicaciones_descanso", "label": "Indicaciones durante el descanso", "type": "textarea",
+         "group": "Descanso", "wide": True},
+    ],
+    "body": (
+        """<p>El profesional que suscribe <strong>CERTIFICA</strong> que
+<strong>{{ paciente.nombre_completo }}</strong>, identificado(a) con
+{{ paciente.tipo_documento }} N.° {{ paciente.documento }}, ha sido atendido(a) en
+{{ clinica.nombre }} y, por el diagnóstico de <strong>{{ campo.diagnostico_descanso }}</strong>
+(CIE-10 {{ campo.cie10_descanso }}), requiere <strong>{{ campo.dias_descanso }} día(s)</strong>
+de {{ campo.tipo_descanso|minus }}.</p>
+
+<table class="doc-grid">
+<tr><td class="k">Desde</td><td>{{ campo.desde }}</td>
+    <td class="k">Hasta</td><td>{{ campo.hasta }}</td></tr>
+</table>
+
+<p><strong>Indicaciones durante el descanso:</strong> {{ campo.indicaciones_descanso|parrafos }}</p>
+
+<p>Se expide el presente certificado a solicitud del interesado para los fines que estime
+conveniente.</p>"""
+        + PLACE_AND_DATE
+        + SIGN_DOCTOR
+    ),
+}
+
+CERTIFICADO_LUCIDEZ = {
+    "code": "CERT-LUC",
+    "version": 1,
+    "family": ADMINISTRATIVO,
+    "title": "Certificado de lucidez mental",
+    "description": "Evaluación psicológica de las capacidades mentales y la autonomía",
+    "study_type": None,
+    "requires_signature": True,
+    "fields": [
+        {"key": "grado_instruccion", "label": "Grado de instrucción", "type": "text", "group": "Datos de la evaluación"},
+        {"key": "ocupacion_luc", "label": "Ocupación", "type": "text", "group": "Datos de la evaluación"},
+        {"key": "motivo_evaluacion", "label": "Motivo de la evaluación", "type": "text", "group": "Datos de la evaluación",
+         "default": "Diagnóstico de lucidez mental", "wide": True},
+        {"key": "instrumentos", "label": "Instrumentos y técnicas aplicadas", "type": "textarea",
+         "group": "Datos de la evaluación", "required": True, "wide": True},
+        choice("orientacion", "Orientación en espacio, tiempo y persona", "Observación psicológica",
+               opts("Conservada", "Alterada"), "Conservada"),
+        choice("lenguaje", "Lenguaje", "Observación psicológica",
+               opts("Claro y coherente", "Alterado"), "Claro y coherente"),
+        choice("memoria", "Memoria a corto, mediano y largo plazo", "Observación psicológica",
+               opts("Conservada", "Alterada"), "Conservada"),
+        choice("autoestima", "Autoestima", "Observación psicológica", opts("Adecuada", "Disminuida"), "Adecuada"),
+        choice("dificultad_visual", "Dificultad visual", "Observación psicológica", SI_NO, "No"),
+        choice("dificultad_auditiva", "Dificultad auditiva", "Observación psicológica", SI_NO, "No"),
+        {"key": "observaciones_luc", "label": "Observaciones de la evaluación", "type": "textarea",
+         "group": "Observación psicológica", "wide": True},
+        choice("resultado_lucidez", "Resultado", "Conclusión",
+               opts("Presenta adecuada lucidez mental", "No presenta adecuada lucidez mental"),
+               "Presenta adecuada lucidez mental"),
+        {"key": "conclusiones_luc", "label": "Conclusiones", "type": "textarea", "group": "Conclusión", "required": True, "wide": True},
+    ],
+    "body": (
+        """<table class="doc-grid">
+<tr><td class="k">Evaluado(a)</td><td>{{ paciente.nombre_completo }}</td>
+    <td class="k">Edad</td><td>{{ paciente.edad }}</td></tr>
+<tr><td class="k">Documento</td><td>{{ paciente.tipo_documento }} {{ paciente.documento }}</td>
+    <td class="k">Fecha de nacimiento</td><td>{{ paciente.fecha_nacimiento }}</td></tr>
+<tr><td class="k">Grado de instrucción</td><td>{{ campo.grado_instruccion }}</td>
+    <td class="k">Ocupación</td><td>{{ campo.ocupacion_luc }}</td></tr>
+<tr><td class="k">Fecha de evaluación</td><td>{{ fecha.hoy }}</td>
+    <td class="k">Motivo</td><td>{{ campo.motivo_evaluacion }}</td></tr>
+</table>
+
+<h2>Observación psicológica</h2>
+<table class="doc-table">
+<tr><th>Área evaluada</th><th>Hallazgo</th><th>Área evaluada</th><th>Hallazgo</th></tr>
+<tr><td>Orientación</td><td>{{ campo.orientacion }}</td><td>Lenguaje</td><td>{{ campo.lenguaje }}</td></tr>
+<tr><td>Memoria</td><td>{{ campo.memoria }}</td><td>Autoestima</td><td>{{ campo.autoestima }}</td></tr>
+<tr><td>Dificultad visual</td><td>{{ campo.dificultad_visual }}</td>
+    <td>Dificultad auditiva</td><td>{{ campo.dificultad_auditiva }}</td></tr>
+</table>
+<p>{{ campo.observaciones_luc|parrafos }}</p>
+
+<h2>Instrumentos y técnicas aplicadas</h2>
+<p>{{ campo.instrumentos|parrafos }}</p>
+
+<h2>Conclusiones</h2>
+<p>A la fecha de esta evaluación, el(la) evaluado(a)
+<strong>{{ campo.resultado_lucidez|mayus }}</strong> en el desarrollo de sus capacidades
+mentales y emocionales, por lo que se encuentra en condiciones de comprender y decidir
+sobre los actos que realiza.</p>
+<p>{{ campo.conclusiones_luc|parrafos }}</p>"""
+        + PLACE_AND_DATE
+        + """<div class="doc-signatures">
+<div class="sign"><div class="line"></div>
+<div class="role">Psicólogo(a) responsable</div>
+<div class="hint">{{ profesional.nombre }} · Colegiatura {{ profesional.cmp }}</div></div>
+</div>"""
+    ),
+}
+
+CONSTANCIA_ATENCION = {
+    "code": "CONS-ATE",
+    "version": 1,
+    "family": ADMINISTRATIVO,
+    "title": "Constancia de atención",
+    "description": "Acredita la fecha, la hora y el servicio en que se atendió al paciente",
+    "study_type": None,
+    "requires_signature": True,
+    "fields": [
+        {"key": "servicio_constancia", "label": "Servicio en que fue atendido", "type": "text",
+         "group": "Atención", "required": True, "wide": True},
+        {"key": "hora_ingreso_cons", "label": "Hora de ingreso", "type": "text", "group": "Atención", "placeholder": "08:20"},
+        {"key": "hora_salida_cons", "label": "Hora de salida", "type": "text", "group": "Atención", "placeholder": "09:45"},
+        {"key": "acompanante_cons", "label": "Persona que lo acompañó", "type": "text", "group": "Atención", "wide": True},
+        {"key": "finalidad_cons", "label": "Finalidad de la constancia", "type": "text", "group": "Atención",
+         "default": "Justificar su inasistencia", "wide": True},
+    ],
+    "body": (
+        """<p>{{ clinica.nombre }} deja <strong>CONSTANCIA</strong> de que
+<strong>{{ paciente.nombre_completo }}</strong>, identificado(a) con
+{{ paciente.tipo_documento }} N.° {{ paciente.documento }}, fue atendido(a) en este
+establecimiento el día {{ fecha.hoy }}.</p>
+
+<table class="doc-grid">
+<tr><td class="k">Servicio</td><td colspan="3">{{ campo.servicio_constancia }}</td></tr>
+<tr><td class="k">Hora de ingreso</td><td>{{ campo.hora_ingreso_cons }}</td>
+    <td class="k">Hora de salida</td><td>{{ campo.hora_salida_cons }}</td></tr>
+<tr><td class="k">Acompañante</td><td colspan="3">{{ campo.acompanante_cons }}</td></tr>
+</table>
+
+<p>Se expide la presente constancia a solicitud del interesado, con la finalidad de
+{{ campo.finalidad_cons|minus }}. No contiene información clínica, la cual es
+confidencial y solo se entrega al propio paciente o a quien él autorice.</p>"""
+        + PLACE_AND_DATE
+        + SIGN_DOCTOR
+    ),
+}
+
+ORDEN_EXAMENES = {
+    "code": "ORD-EXA",
+    "version": 1,
+    "family": ADMINISTRATIVO,
+    "title": "Orden de exámenes auxiliares",
+    "description": "Solicitud de laboratorio, imágenes u otros apoyos al diagnóstico",
+    "study_type": None,
+    "requires_signature": True,
+    "fields": [
+        {"key": "diagnostico_orden", "label": "Diagnóstico presuntivo", "type": "text", "group": "Solicitud", "required": True, "wide": True},
+        {"key": "cie10_orden", "label": "CIE-10", "type": "text", "group": "Solicitud", "placeholder": "N39.0"},
+        {"key": "laboratorio", "label": "Exámenes de laboratorio", "type": "textarea", "group": "Exámenes solicitados", "wide": True},
+        {"key": "imagenes", "label": "Estudios de imágenes", "type": "textarea", "group": "Exámenes solicitados", "wide": True},
+        {"key": "otros_examenes", "label": "Otros exámenes", "type": "textarea", "group": "Exámenes solicitados", "wide": True},
+        {"key": "preparacion", "label": "Preparación que debe seguir el paciente", "type": "textarea",
+         "group": "Indicaciones", "default": "Acudir en ayunas de 8 horas", "wide": True},
+        choice("urgencia_orden", "Prioridad", "Indicaciones", opts("Rutina", "Urgente"), "Rutina"),
+        {"key": "fecha_orden", "label": "Fecha sugerida para la toma de muestra", "type": "date", "group": "Indicaciones"},
+    ],
+    "body": (
+        HEADER_CLINICAL
+        + """<table class="doc-grid">
+<tr><td class="k">Diagnóstico presuntivo</td><td>{{ campo.diagnostico_orden }}</td>
+    <td class="k">CIE-10</td><td>{{ campo.cie10_orden }}</td></tr>
+<tr><td class="k">Prioridad</td><td>{{ campo.urgencia_orden }}</td>
+    <td class="k">Fecha sugerida</td><td>{{ campo.fecha_orden }}</td></tr>
+</table>
+
+<h2>Exámenes solicitados</h2>
+<p><strong>Laboratorio:</strong> {{ campo.laboratorio|parrafos }}</p>
+<p><strong>Imágenes:</strong> {{ campo.imagenes|parrafos }}</p>
+<p><strong>Otros:</strong> {{ campo.otros_examenes|parrafos }}</p>
+
+<h2>Preparación</h2>
+<p>{{ campo.preparacion|parrafos }}</p>"""
+        + SIGN_DOCTOR
+    ),
+}
+
+COTIZACION_LENTES = {
+    "code": "COT-LEN",
+    "version": 1,
+    "family": ADMINISTRATIVO,
+    "title": "Hoja de cotización de lentes",
+    "description": "Montura, lunas y monto total cotizado en óptica",
+    "study_type": "OPTOMETRIA",
+    "requires_signature": False,
+    "fields": [
+        {"key": "montura", "label": "Montura", "type": "textarea", "group": "Cotización", "required": True, "wide": True},
+        {"key": "precio_montura", "label": "Precio de la montura (S/)", "type": "number", "group": "Cotización"},
+        {"key": "lunas", "label": "Lunas", "type": "textarea", "group": "Cotización", "required": True, "wide": True},
+        {"key": "precio_lunas", "label": "Precio de las lunas (S/)", "type": "number", "group": "Cotización"},
+        {
+            "key": "total",
+            "label": "Monto total (S/)",
+            "type": "computed",
+            "group": "Cotización",
+            "sum": ["precio_montura", "precio_lunas"],
+        },
+        measure("validez_cotizacion", "Validez de la cotización (días)", "Condiciones", "15"),
+        {"key": "tiempo_entrega", "label": "Tiempo de entrega", "type": "text", "group": "Condiciones",
+         "default": "5 días hábiles"},
+        {"key": "observaciones_cot", "label": "Observaciones", "type": "textarea", "group": "Condiciones", "wide": True},
+    ],
+    "body": (
+        """<table class="doc-grid">
+<tr><td class="k">Cliente</td><td>{{ paciente.nombre_completo }}</td>
+    <td class="k">Fecha</td><td>{{ fecha.hoy }}</td></tr>
+<tr><td class="k">Documento</td><td>{{ paciente.tipo_documento }} {{ paciente.documento }}</td>
+    <td class="k">Teléfono</td><td>{{ paciente.telefono }}</td></tr>
+</table>
+
+<h2>Cotización</h2>
+<table class="doc-table">
+<tr><th>Concepto</th><th>Detalle</th><th>Importe</th></tr>
+<tr><td>Montura</td><td>{{ campo.montura }}</td><td>S/ {{ campo.precio_montura }}</td></tr>
+<tr><td>Lunas</td><td>{{ campo.lunas }}</td><td>S/ {{ campo.precio_lunas }}</td></tr>
+<tr><td colspan="2"><strong>Monto total</strong></td><td><strong>S/ {{ campo.total }}</strong></td></tr>
+</table>
+
+<table class="doc-grid">
+<tr><td class="k">Validez de la cotización</td><td>{{ campo.validez_cotizacion }} días</td>
+    <td class="k">Tiempo de entrega</td><td>{{ campo.tiempo_entrega }}</td></tr>
+</table>
+<p><strong>Observaciones:</strong> {{ campo.observaciones_cot|parrafos }}</p>
+
+<p class="doc-note">Esta cotización no constituye comprobante de pago. Los precios pueden
+variar si cambia la medida prescrita o el tipo de luna elegido.</p>"""
+    ),
+}
+
+PAGARE = {
+    "code": "PAGARE",
+    "version": 1,
+    "family": ADMINISTRATIVO,
+    "title": "Pagaré",
+    "description": "Título valor por las prestaciones de salud recibidas",
+    "study_type": None,
+    "requires_signature": True,
+    "fields": [
+        measure("monto", "Importe (S/)", "Obligación"),
+        {"key": "monto_letras", "label": "Importe en letras", "type": "text", "group": "Obligación", "required": True, "wide": True},
+        {"key": "vencimiento", "label": "Fecha de vencimiento", "type": "date", "group": "Obligación", "required": True},
+        {"key": "emitente", "label": "Emitente", "type": "text", "group": "Emitente", "required": True, "wide": True},
+        {"key": "emitente_documento", "label": "Documento de identidad del emitente", "type": "text", "group": "Emitente", "required": True},
+        {"key": "emitente_telefono", "label": "Teléfono del emitente", "type": "text", "group": "Emitente"},
+        {"key": "emitente_domicilio", "label": "Domicilio del emitente", "type": "text", "group": "Emitente", "wide": True},
+        {"key": "aval", "label": "Aval permanente", "type": "text", "group": "Aval", "wide": True},
+        {"key": "aval_documento", "label": "Documento de identidad del aval", "type": "text", "group": "Aval"},
+        {"key": "aval_domicilio", "label": "Domicilio del aval", "type": "text", "group": "Aval", "wide": True},
+    ],
+    "body": (
+        """<table class="doc-grid">
+<tr><td class="k">Por S/</td><td><strong>{{ campo.monto }}</strong></td>
+    <td class="k">Vence el</td><td>{{ campo.vencimiento }}</td></tr>
+<tr><td class="k">Paciente atendido</td><td colspan="3">{{ paciente.nombre_completo }} ·
+    historia clínica N.° {{ paciente.historia }}</td></tr>
+</table>
+
+<p>Debo y pagaré en la forma de vencimiento indicada, a la orden de
+<strong>{{ clinica.nombre_legal }}</strong> ({{ clinica.nombre }}), en el domicilio de dicha
+institución sito en {{ clinica.direccion }} o en el lugar donde se me presentara este
+documento, la cantidad de <strong>{{ campo.monto_letras|mayus }} SOLES</strong>, valor de las
+prestaciones de salud recibidas a mi entera satisfacción.</p>
+
+<p>Queda estipulado que si no pagase al vencimiento abonaré por mora el interés legal
+correspondiente, de conformidad con lo establecido en el artículo 1244° del Código Civil,
+más las costas y costos judiciales, comisiones, gastos administrativos y notariales y otros
+en los que {{ clinica.nombre_legal }} incurra como consecuencia de mi incumplimiento.</p>
+
+<p>Las prórrogas de este pagaré, por su importe total o por cantidad menor, que
+{{ clinica.nombre_legal }} tuviera a bien concederme podrán ser anotadas en este documento
+sin que sea necesaria su suscripción. En caso de incumplir la obligación contenida en este
+título, en virtud de lo establecido en los artículos 52° y 81° de la Ley N.° 27287, Ley de
+Títulos Valores, libero a {{ clinica.nombre_legal }} de la formalidad del protesto.</p>
+
+<table class="doc-grid">
+<tr><td class="k">Emitente</td><td colspan="3">{{ campo.emitente }}</td></tr>
+<tr><td class="k">Documento</td><td>{{ campo.emitente_documento }}</td>
+    <td class="k">Teléfono</td><td>{{ campo.emitente_telefono }}</td></tr>
+<tr><td class="k">Domicilio</td><td colspan="3">{{ campo.emitente_domicilio }}</td></tr>
+</table>
+
+<p>Quien suscribe como aval permanente se constituye en tal por la obligación cambiaria que
+contrae el emitente con {{ clinica.nombre_legal }}, comprometiéndose a responder por la
+cantidad adeudada e intereses, comisiones, impuestos y gastos que puedan devengarse, y
+aceptando desde ahora las prórrogas que se anoten en este documento.</p>
+
+<table class="doc-grid">
+<tr><td class="k">Aval permanente</td><td colspan="3">{{ campo.aval }}</td></tr>
+<tr><td class="k">Documento</td><td>{{ campo.aval_documento }}</td>
+    <td class="k">Domicilio</td><td>{{ campo.aval_domicilio }}</td></tr>
+</table>"""
+        + PLACE_AND_DATE
+        + """<div class="doc-signatures">
+<div class="sign"><div class="line"></div><div class="role">Firma del emitente</div>
+<div class="hint">{{ campo.emitente }} · {{ campo.emitente_documento }}</div></div>
+<div class="sign"><div class="line"></div><div class="role">Firma del aval permanente</div>
+<div class="hint">{{ campo.aval }} · {{ campo.aval_documento }}</div></div>
+</div>"""
+    ),
+}
+
+
 TEMPLATES: tuple[dict[str, Any], ...] = (
     ECO_ABDOMINAL,
     ECO_TIROIDES,
@@ -2101,6 +4198,36 @@ TEMPLATES: tuple[dict[str, Any], ...] = (
     ECO_TESTICULAR,
     ECO_PARTES_BLANDAS,
     ECG,
+    INFORME_RADIOLOGICO,
+    INFORME_AUDIOMETRIA,
+    INFORME_ESPIROMETRIA,
+    LAB_HEMOGRAMA,
+    LAB_ORINA,
+    LAB_PARASITOLOGICO,
+    LAB_BIOQUIMICA,
+    LAB_LIPIDICO,
+    LAB_HEPATICO,
+    LAB_RENAL,
+    LAB_TIROIDEO,
+    LAB_GLICOSILADA,
+    LAB_GRUPO,
+    LAB_COAGULACION,
+    LAB_VSG,
+    LAB_PCR,
+    LAB_RPR,
+    LAB_VIH,
+    LAB_HEPATITIS,
+    LAB_DENGUE,
+    LAB_HELICOBACTER,
+    LAB_AGLUTINACIONES,
+    LAB_EMBARAZO,
+    LAB_UROCULTIVO,
+    LAB_GRAM,
+    LAB_BACILOSCOPIA,
+    LAB_GOTA_GRUESA,
+    LAB_HONGOS,
+    LAB_LEISHMANIASIS,
+    LAB_PROTEINURIA,
     FICHA_OPTOMETRIA,
     RECETA_LENTES,
     RECETA_MEDICA,
@@ -2108,6 +4235,14 @@ TEMPLATES: tuple[dict[str, Any], ...] = (
     RIESGO_QUIRURGICO,
     EVALUACION_PSICOSOMATICA,
     INFORME_PSICOLOGICO,
+    TAMIZAJE_SRQ,
+    HISTORIA_CLINICA_GENERAL,
+    HISTORIA_RECIEN_NACIDO,
+    FICHA_TERAPIA_FISICA,
+    CONTROL_TERAPIA,
+    EVOLUCION_HOSPITALIZACION,
+    REPORTE_OPERATORIO,
+    CUIDADOS_URPA,
     CI_PROCEDIMIENTOS,
     CI_VIH,
     CI_HOSPITALIZACION,
@@ -2115,10 +4250,23 @@ TEMPLATES: tuple[dict[str, Any], ...] = (
     CI_TOXICOLOGICO,
     CI_INFORME_RADIOLOGICO,
     CI_TRASLADO,
+    CI_MENOR,
+    CI_QUIRURGICO,
+    AUTORIZACION_TRASLADO_PACIENTE,
     DJ_RADIOLOGIA,
     EXONERACION,
     ALTA_VOLUNTARIA,
+    ALTA_MEDICA,
     HOJA_TRASLADO,
+    HOJA_REFERENCIA,
+    HOJA_INTERCONSULTA,
+    CERTIFICADO_MEDICO,
+    DESCANSO_MEDICO,
+    CERTIFICADO_LUCIDEZ,
+    CONSTANCIA_ATENCION,
+    ORDEN_EXAMENES,
+    COTIZACION_LENTES,
+    PAGARE,
 )
 
 

@@ -15,12 +15,18 @@ import {
   useAppointmentActions,
   useAvailability,
 } from '@/features/appointments/hooks/useAppointments'
+import { ServicePicker } from '@/features/catalog/components/ServicePicker'
 import { useActivePractitioners, useActiveServices } from '@/features/catalog/hooks/useCatalog'
 import { PatientPicker } from '@/features/patients/components/PatientPicker'
 import { formatTime, fromDateTimeInput, toDateInput, toDateTimeInput } from '@/lib/datetime'
 import { cn } from '@/lib/utils'
 import { getErrorMessage } from '@/services/http'
-import type { Appointment, AppointmentPayload, PatientSummary } from '@/types'
+import type {
+  Appointment,
+  AppointmentPayload,
+  MedicalService,
+  PatientSummary,
+} from '@/types'
 
 interface AppointmentFormModalProps {
   open: boolean
@@ -50,6 +56,7 @@ export function AppointmentFormModal({
   const [patient, setPatient] = useState<PatientSummary | null>(null)
   const [practitionerId, setPractitionerId] = useState('')
   const [serviceId, setServiceId] = useState('')
+  const [service, setService] = useState<MedicalService | null>(null)
   const [day, setDay] = useState(() => initialDay ?? toDateInput())
   const [time, setTime] = useState('')
   const [reason, setReason] = useState('')
@@ -95,10 +102,17 @@ export function AppointmentFormModal({
     [practitioners],
   )
 
-  const serviceOptions: SelectOption[] = useMemo(
-    () => services.map((item) => ({ value: String(item.id), label: item.name })),
-    [services],
-  )
+  // Al reprogramar, de la cita solo llega el id del servicio: se resuelve
+  // contra el tarifario vigente apenas la lista está disponible. Lo que el
+  // usuario elige en el buscador ya viene completo y no vuelve a resolverse.
+  useEffect(() => {
+    if (!serviceId) {
+      setService(null)
+      return
+    }
+    if (service && String(service.id) === serviceId) return
+    setService(services.find((item) => String(item.id) === serviceId) ?? null)
+  }, [serviceId, service, services])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -172,13 +186,15 @@ export function AppointmentFormModal({
             disabled={isLoading}
             onChange={(event) => setPractitionerId(event.target.value)}
           />
-          <Select
+          <ServicePicker
             label="Servicio"
-            options={serviceOptions}
-            placeholder="Sin servicio asociado"
-            value={serviceId}
+            placeholder="Busque el servicio (opcional)"
+            value={service}
             disabled={isLoading}
-            onChange={(event) => setServiceId(event.target.value)}
+            onChange={(item) => {
+              setService(item)
+              setServiceId(item ? String(item.id) : '')
+            }}
           />
         </div>
 

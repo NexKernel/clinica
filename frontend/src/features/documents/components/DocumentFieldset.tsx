@@ -1,5 +1,6 @@
 import { Input, Select, Switch, Textarea, type SelectOption } from '@/components/ui'
 import type { DocumentData, TemplateField } from '@/types'
+import { Odontogram, parseOdontograma } from './Odontogram'
 
 /** El formulario trabaja siempre con texto; la conversión ocurre al guardar. */
 export type FieldValues = Record<string, string>
@@ -23,7 +24,13 @@ export function computedValue(field: TemplateField, values: FieldValues): number
 /** Estado inicial del formulario: lo guardado y, si falta, el valor sugerido. */
 export function toFieldValues(fields: TemplateField[], data: DocumentData): FieldValues {
   return Object.fromEntries(
-    fields.map((field) => [field.key, asText(data[field.key] ?? field.default)]),
+    fields.map((field) => {
+      const raw = data[field.key] ?? field.default
+      if (field.type === 'odontograma') {
+        return [field.key, raw && typeof raw === 'object' ? JSON.stringify(raw) : '']
+      }
+      return [field.key, asText(raw)]
+    }),
   )
 }
 
@@ -36,6 +43,9 @@ export function toDocumentData(fields: TemplateField[], values: FieldValues): Do
 
     if (field.type === 'computed') {
       data[field.key] = computedValue(field, values)
+    } else if (field.type === 'odontograma') {
+      const marcas = parseOdontograma(raw)
+      data[field.key] = Object.keys(marcas).length ? marcas : null
     } else if (field.type === 'boolean') {
       data[field.key] = raw === 'true'
     } else if (field.type === 'number') {
@@ -162,6 +172,10 @@ function DocumentControl({ field, values, disabled, invalid, onChange }: Documen
         </div>
       </div>
     )
+  }
+
+  if (field.type === 'odontograma') {
+    return <Odontogram value={value} disabled={disabled} onChange={set} />
   }
 
   if (field.type === 'select') {

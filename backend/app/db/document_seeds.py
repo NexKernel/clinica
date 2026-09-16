@@ -3459,7 +3459,9 @@ HISTORIA_ODONTOLOGICA = {
         measure("odo_fr", "Frecuencia respiratoria (rpm)", "Signos vitales"),
         {"key": "odo_examen_general", "label": "Examen clínico general", "type": "textarea", "group": "Examen clínico", "default": "Sin alteraciones", "wide": True},
         {"key": "odo_examen_esto", "label": "Examen clínico odontoestomatológico", "type": "textarea", "group": "Examen clínico", "required": True, "wide": True},
-        {"key": "odo_odontograma", "label": "Hallazgos del odontograma por pieza", "type": "textarea", "group": "Examen clínico", "help": "Pieza y hallazgo, uno por línea. El gráfico se adjunta aparte.", "wide": True},
+        {"key": "odo_odontograma", "label": "Odontograma", "type": "odontograma", "group": "Odontograma",
+         "help": "Notación FDI. Se marca la cara de la pieza, o el número para la pieza entera."},
+        {"key": "odo_odontograma_notas", "label": "Observaciones del odontograma", "type": "textarea", "group": "Odontograma", "default": "Ninguna", "wide": True},
         {"key": "odo_dx_presuntivo", "label": "Diagnóstico presuntivo", "type": "textarea", "group": "Diagnóstico", "required": True, "wide": True},
         {"key": "odo_dx_definitivo", "label": "Diagnóstico definitivo", "type": "textarea", "group": "Diagnóstico", "wide": True},
         {"key": "odo_plan", "label": "Plan de tratamiento", "type": "textarea", "group": "Plan", "required": True, "wide": True},
@@ -3503,7 +3505,10 @@ HISTORIA_ODONTOLOGICA = {
 <h2>Examen clínico</h2>
 <p><strong>General:</strong> {{ campo.odo_examen_general|parrafos }}</p>
 <p><strong>Odontoestomatológico:</strong> {{ campo.odo_examen_esto|parrafos }}</p>
-<p><strong>Odontograma:</strong> {{ campo.odo_odontograma|parrafos }}</p>
+
+<h2>Odontograma</h2>
+{{ campo.odo_odontograma|odontograma }}
+<p><strong>Observaciones:</strong> {{ campo.odo_odontograma_notas|parrafos }}</p>
 
 <h2>Diagnóstico</h2>
 <p><strong>Presuntivo:</strong> {{ campo.odo_dx_presuntivo|parrafos }}</p>

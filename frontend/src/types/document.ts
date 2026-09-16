@@ -29,6 +29,7 @@ const TEMPLATE_FIELD_TYPES = [
   'select',
   'boolean',
   'computed',
+  'odontograma',
 ] as const
 export type TemplateFieldType = (typeof TEMPLATE_FIELD_TYPES)[number]
 
@@ -68,7 +69,8 @@ export interface DocumentTemplateSummary {
 }
 
 /** Datos capturados. Las claves son las de `TemplateField`. */
-export type DocumentData = Record<string, string | number | boolean | null>
+/** El odontograma guarda un objeto por pieza; el resto de campos, escalares. */
+export type DocumentData = Record<string, string | number | boolean | null | object>
 
 export interface DocumentPayload {
   patient_id: number

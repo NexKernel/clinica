@@ -20,6 +20,8 @@ import re
 from collections.abc import Mapping
 from typing import Any
 
+from app.core.odontogram import render_odontogram
+
 # {{ paciente.nombre_completo }} · {{ campo.conclusion|mayus }}
 _PLACEHOLDER = re.compile(
     r"\{\{\s*(?P<scope>[a-z_]+)\.(?P<key>[a-z0-9_]+)\s*(?:\|\s*(?P<filter>[a-z_]+)\s*)?\}\}"
@@ -103,6 +105,9 @@ def render(body: str, context: Mapping[str, Mapping[str, Any]]) -> str:
         if filter_name == "lista":
             return _render_list(value if isinstance(value, (list, tuple)) else [value])
 
+        if filter_name == "odontograma":
+            return render_odontogram(value)
+
         raw = _as_text(value)
         if not raw:
             return BLANK_MARK
@@ -164,6 +169,8 @@ STYLESHEET = """
 .doc-table { width: 100%; border-collapse: collapse; margin: 6px 0 10px; font-size: 9.5pt; }
 .doc-table th, .doc-table td { border: 1px solid var(--doc-rule); padding: 4px 6px; text-align: left; }
 .doc-table th { background: #eef7f6; font-weight: 600; text-transform: uppercase; font-size: 8.5pt; letter-spacing: .03em; }
+.doc-odontogram { margin: 8px 0 12px; page-break-inside: avoid; }
+.doc-odontogram svg { display: block; max-width: 100%; height: auto; }
 .doc-note { margin-top: 10px; padding: 6px 9px; background: #f3f8f7; border-left: 3px solid var(--doc-brand); font-size: 9pt; color: var(--doc-soft); }
 .doc-signatures { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 26px; page-break-inside: avoid; }
 .doc-signatures .sign { flex: 1 1 40%; text-align: center; font-size: 9pt; }
@@ -174,6 +181,7 @@ STYLESHEET = """
 @media print {
   .doc { max-width: none; margin: 0; padding: 0; font-size: 10pt; box-shadow: none; }
   .doc-body { orphans: 3; widows: 3; }
+  .doc-odontogram { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
 """
 

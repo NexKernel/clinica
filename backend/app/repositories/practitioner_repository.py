@@ -12,6 +12,18 @@ class PractitionerRepository(BaseRepository[Practitioner]):
         stmt = select(Practitioner).where(Practitioner.user_id == user_id)
         return self.db.execute(stmt).unique().scalar_one_or_none()
 
+    def find_unlinked_by_name(self, full_name: str) -> Practitioner | None:
+        """Ficha sin cuenta asociada que coincide en nombre.
+
+        Lo normal es cargar primero a los profesionales y crearles el acceso
+        después; sirve para vincular esa ficha en vez de duplicar al médico.
+        """
+        stmt = select(Practitioner).where(
+            Practitioner.user_id.is_(None),
+            func.lower(Practitioner.full_name) == full_name.strip().lower(),
+        )
+        return self.db.execute(stmt).unique().scalars().first()
+
     def user_taken(self, user_id: int, exclude_id: int | None = None) -> bool:
         stmt = select(Practitioner.id).where(Practitioner.user_id == user_id)
         if exclude_id is not None:

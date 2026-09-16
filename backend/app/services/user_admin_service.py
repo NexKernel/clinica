@@ -1,7 +1,8 @@
 from sqlalchemy.orm import Session
 
 from app.core.security import hash_password
-from app.models import Role, RoleCode, User
+from app.models import Practitioner, Role, RoleCode, User
+from app.repositories.practitioner_repository import PractitionerRepository
 from app.repositories.user_repository import RoleRepository, UserRepository
 from app.schemas.user import UserAdminUpdate, UserCreate
 from app.services.exceptions import BusinessRuleError, ConflictError, NotFoundError
@@ -15,6 +16,7 @@ class UserAdminService:
     def __init__(self, db: Session) -> None:
         self.users = UserRepository(db)
         self.roles = RoleRepository(db)
+        self.practitioners = PractitionerRepository(db)
 
     def list_roles(self) -> list[Role]:
         return self.roles.list_active()
@@ -49,7 +51,7 @@ class UserAdminService:
         self._ensure_unique(payload.username, email)
         role = self._resolve_role(payload.role)
 
-        return self.users.create(
+        user = self.users.create(
             User(
                 username=payload.username,
                 email=email,
@@ -59,6 +61,8 @@ class UserAdminService:
                 is_active=payload.is_active,
             )
         )
+        self._sync_practitioner(user)
+        return user
 
     def update(self, user_id: int, payload: UserAdminUpdate, actor: User) -> User:
         user = self.get(user_id)
@@ -83,7 +87,9 @@ class UserAdminService:
         user.full_name = payload.full_name
         user.role_id = role.id
         user.is_active = payload.is_active
-        return self.users.save(user)
+        user = self.users.save(user)
+        self._sync_practitioner(user)
+        return user
 
     def set_active(self, user_id: int, is_active: bool, actor: User) -> User:
         user = self.get(user_id)
@@ -97,12 +103,42 @@ class UserAdminService:
             raise BusinessRuleError("Debe existir al menos un administrador activo")
 
         user.is_active = is_active
-        return self.users.save(user)
+        user = self.users.save(user)
+        self._sync_practitioner(user)
+        return user
 
     def reset_password(self, user_id: int, new_password: str) -> User:
         user = self.get(user_id)
         user.password_hash = hash_password(new_password)
         return self.users.save(user)
+
+    def _sync_practitioner(self, user: User) -> None:
+        """Mantiene la ficha de profesional de quien tiene perfil Médico.
+
+        Sin esto, crear el usuario no bastaba: el médico no figuraba en
+        Profesionales, así que no aparecía en los selectores de la agenda y no
+        se le podían asignar citas hasta darlo de alta a mano por segunda vez.
+        """
+        practitioner = self.practitioners.get_by_user(user.id)
+
+        if user.role != RoleCode.MEDICO.value:
+            # Al dejar de ser médico se retira de la agenda, pero la ficha se
+            # conserva: las citas y atenciones ya registradas la referencian.
+            if practitioner is not None and practitioner.is_active:
+                practitioner.is_active = False
+                self.practitioners.save(practitioner)
+            return
+
+        if practitioner is None:
+            # Si ya existía una ficha suelta con ese nombre se vincula, para no
+            # duplicar al mismo médico en la agenda.
+            practitioner = self.practitioners.find_unlinked_by_name(user.full_name)
+            if practitioner is None:
+                practitioner = Practitioner(full_name=user.full_name, email=user.email)
+            practitioner.user_id = user.id
+
+        practitioner.is_active = user.is_active
+        self.practitioners.save(practitioner)
 
     def _ensure_unique(self, username: str, email: str, exclude_id: int | None = None) -> None:
         if self.users.username_taken(username, exclude_id=exclude_id):

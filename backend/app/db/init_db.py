@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Callable
 
 from sqlalchemy.orm import Session
 
@@ -132,15 +133,38 @@ def _sync_admin(users: UserRepository, admin: User) -> None:
         logger.info("Cuenta %s sincronizada con el entorno: %s", admin.username, ", ".join(changes))
 
 
+def _run_step(db: Session, label: str, step: Callable[[Session], object]) -> bool:
+    """Ejecuta un paso del sembrado sin dejar que se lleve por delante a los siguientes.
+
+    main.py atrapa lo que salga de init_db(), así que sin este aislamiento un
+    fallo temprano dejaba la aplicación arrancada y a medio sembrar, en
+    silencio. Se registra la traza y se sigue: es preferible un módulo incompleto
+    y anunciado a una instalación muda.
+    """
+    try:
+        step(db)
+    except Exception:
+        db.rollback()
+        logger.exception("Falló el sembrado de %s", label)
+        return False
+    return True
+
+
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     apply_schema_updates(engine)
     with SessionLocal() as db:
-        _seed_roles(db)
-        _seed_admin(db)
-        seed_catalog(db)
-        seed_document_templates(db)
-        SettingsService(db).get()
+        steps: tuple[tuple[str, Callable[[Session], object]], ...] = (
+            ("roles", _seed_roles),
+            ("administrador", _seed_admin),
+            ("catálogo", seed_catalog),
+            ("plantillas de documentos", seed_document_templates),
+            ("configuración de la clínica", lambda session: SettingsService(session).get()),
+        )
+        failed = [label for label, step in steps if not _run_step(db, label, step)]
+
+    if failed:
+        logger.error("Sembrado incompleto: %s", ", ".join(failed))
 
 
 if __name__ == "__main__":

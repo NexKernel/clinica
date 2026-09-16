@@ -14,6 +14,7 @@ import logging
 
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.models.patient import new_public_id
 
@@ -33,8 +34,17 @@ ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
 
 
 def apply_schema_updates(engine: Engine) -> None:
+    """Aplica los ajustes de esquema, cada uno aislado de los demás.
+
+    Un fallo no puede cortar la lista: init_db() seguiría sin sembrar y main.py
+    atrapa la excepción, así que una sentencia rota dejaba la aplicación en
+    marcha, respondiendo 200 en /health, con el catálogo a medio cargar y sin
+    más rastro que el silencio. Aquí cada ajuste falla por su cuenta, queda
+    registrado con su traza, y el resto continúa.
+    """
     inspector = inspect(engine)
     tables = set(inspector.get_table_names())
+    failures = 0
 
     for table, column, definition in ADDED_COLUMNS:
         if table not in tables:
@@ -43,11 +53,27 @@ def apply_schema_updates(engine: Engine) -> None:
         if column in existing:
             continue
 
-        with engine.begin() as connection:
-            connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}"))
-        logger.info("Columna agregada: %s.%s", table, column)
+        try:
+            with engine.begin() as connection:
+                connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}"))
+        except SQLAlchemyError:
+            failures += 1
+            logger.exception("No se pudo agregar la columna %s.%s", table, column)
+        else:
+            logger.info("Columna agregada: %s.%s", table, column)
 
-    _add_patient_public_id(engine, tables)
+    try:
+        _add_patient_public_id(engine, tables)
+    except SQLAlchemyError:
+        failures += 1
+        logger.exception("No se pudo completar el ajuste de patients.public_id")
+
+    if failures:
+        logger.error(
+            "%d ajuste(s) de esquema quedaron sin aplicar: revise los errores anteriores "
+            "antes de dar por bueno el despliegue.",
+            failures,
+        )
 
 
 def _add_patient_public_id(engine: Engine, tables: set[str]) -> None:

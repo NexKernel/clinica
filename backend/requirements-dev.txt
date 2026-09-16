@@ -1,0 +1,3 @@
+# Utilidades de desarrollo. No se instalan en la imagen de produccion.
+# httpx lo necesita el TestClient de FastAPI que usa scripts/smoke.py.
+httpx==0.28.1

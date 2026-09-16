@@ -2739,6 +2739,121 @@ HISTORIA_CLINICA_GENERAL = {
     ),
 }
 
+# La versión 2 incorpora los cuatro campos que el formato en papel de la clínica
+# (hoja «H.C.Asistencial») tiene y la primera versión no recogía: las
+# intervenciones quirúrgicas, la ectoscopía y, dentro del examen físico, el
+# sistema osteomuscular y el cajón de otros hallazgos. El orden del examen sigue
+# al de la hoja impresa, que es el que el personal ya tiene memorizado.
+HISTORIA_CLINICA_GENERAL_V2 = {
+    "code": "FIC-HCG",
+    "version": 2,
+    "family": FICHA,
+    "title": "Historia clínica general",
+    "description": "Anamnesis, antecedentes, funciones vitales, ectoscopía, examen físico, diagnóstico y plan",
+    "study_type": None,
+    "requires_signature": True,
+    "fields": [
+        {"key": "motivo_consulta", "label": "Motivo de consulta", "type": "text", "group": "Anamnesis", "required": True, "wide": True},
+        {"key": "enfermedad_actual", "label": "Enfermedad actual", "type": "textarea", "group": "Anamnesis", "required": True, "wide": True},
+        measure("tiempo_enfermedad", "Tiempo de enfermedad (días)", "Anamnesis"),
+        choice("forma_inicio", "Forma de inicio", "Anamnesis", opts("Insidioso", "Brusco"), "Insidioso"),
+        choice("curso", "Curso", "Anamnesis", opts("Progresivo", "Estacionario", "Remitente"), "Progresivo"),
+        {"key": "antecedentes_personales", "label": "Antecedentes personales", "type": "textarea", "group": "Antecedentes", "default": "Niega", "wide": True},
+        {"key": "antecedentes_familiares", "label": "Antecedentes familiares", "type": "textarea", "group": "Antecedentes", "default": "Niega", "wide": True},
+        {"key": "intervenciones_qx", "label": "Intervenciones quirúrgicas", "type": "text", "group": "Antecedentes", "default": "Niega", "wide": True},
+        {"key": "alergias_hc", "label": "Alergias referidas", "type": "text", "group": "Antecedentes", "default": "Niega", "wide": True},
+        {"key": "medicacion_habitual", "label": "Medicación habitual", "type": "text", "group": "Antecedentes", "default": "Ninguna", "wide": True},
+        {"key": "pa", "label": "Presión arterial (mmHg)", "type": "text", "group": "Funciones vitales", "placeholder": "120/80"},
+        measure("fc", "Frecuencia cardíaca (lpm)", "Funciones vitales"),
+        measure("fr", "Frecuencia respiratoria (rpm)", "Funciones vitales"),
+        measure("temperatura", "Temperatura (°C)", "Funciones vitales"),
+        measure("saturacion", "Saturación de oxígeno (%)", "Funciones vitales"),
+        measure("peso_hc", "Peso (kg)", "Funciones vitales"),
+        measure("talla_hc", "Talla (cm)", "Funciones vitales"),
+        {"key": "ectoscopia", "label": "Ectoscopía", "type": "text", "group": "Examen físico", "default": "Aparente buen estado general, de hidratación y nutrición; lúcido y orientado", "wide": True},
+        choice("estado_general", "Estado general", "Examen físico",
+               opts("Bueno", "Regular", "Malo"), "Bueno"),
+        {"key": "piel_tcsc", "label": "Piel y tejido celular subcutáneo", "type": "text", "group": "Examen físico", "default": "Sin alteraciones", "wide": True},
+        {"key": "osteomuscular", "label": "Sistema osteomuscular · movilidad activa y pasiva", "type": "text", "group": "Examen físico", "default": "Conservadas, sin limitación funcional", "wide": True},
+        {"key": "cabeza_cuello", "label": "Cabeza y cuello", "type": "text", "group": "Examen físico", "default": "Sin alteraciones", "wide": True},
+        {"key": "torax_pulmones", "label": "Tórax y pulmones", "type": "text", "group": "Examen físico", "default": "Murmullo vesicular pasa bien en ambos campos pulmonares", "wide": True},
+        {"key": "cardiovascular", "label": "Cardiovascular", "type": "text", "group": "Examen físico", "default": "Ruidos cardíacos rítmicos, no soplos", "wide": True},
+        {"key": "abdomen", "label": "Abdomen", "type": "text", "group": "Examen físico", "default": "Blando, depresible, no doloroso a la palpación", "wide": True},
+        {"key": "genitourinario", "label": "Genitourinario", "type": "text", "group": "Examen físico", "default": "Puño percusión lumbar negativa", "wide": True},
+        {"key": "neurologico", "label": "Neurológico", "type": "text", "group": "Examen físico", "default": "Despierto, orientado en tiempo, espacio y persona", "wide": True},
+        {"key": "otros_examen", "label": "Otros hallazgos", "type": "textarea", "group": "Examen físico", "default": "Ninguno", "wide": True},
+        {"key": "diagnosticos_hc", "label": "Diagnósticos presuntivos", "type": "textarea", "group": "Diagnóstico y plan", "required": True, "wide": True},
+        {"key": "cie10_hc", "label": "CIE-10", "type": "text", "group": "Diagnóstico y plan", "placeholder": "J00"},
+        {"key": "examenes", "label": "Exámenes auxiliares solicitados", "type": "textarea", "group": "Diagnóstico y plan", "default": "Ninguno", "wide": True},
+        {"key": "plan_hc", "label": "Plan de trabajo e indicaciones", "type": "textarea", "group": "Diagnóstico y plan", "required": True, "wide": True},
+    ],
+    "body": (
+        HEADER_CLINICAL
+        + """<h2>Filiación</h2>
+<table class="doc-grid">
+<tr><td class="k">Fecha de nacimiento</td><td>{{ paciente.fecha_nacimiento }}</td>
+    <td class="k">Lugar de nacimiento</td><td>{{ paciente.lugar_nacimiento }}</td></tr>
+<tr><td class="k">Sexo</td><td>{{ paciente.sexo }}</td>
+    <td class="k">Estado civil</td><td>{{ paciente.estado_civil }}</td></tr>
+<tr><td class="k">Ocupación</td><td>{{ paciente.ocupacion }}</td>
+    <td class="k">Domicilio</td><td>{{ paciente.direccion }}</td></tr>
+</table>
+
+<h2>Anamnesis</h2>
+<table class="doc-grid">
+<tr><td class="k">Motivo de consulta</td><td colspan="3">{{ campo.motivo_consulta }}</td></tr>
+<tr><td class="k">Tiempo de enfermedad</td><td>{{ campo.tiempo_enfermedad }} días</td>
+    <td class="k">Inicio y curso</td><td>{{ campo.forma_inicio }} · {{ campo.curso }}</td></tr>
+</table>
+<p>{{ campo.enfermedad_actual|parrafos }}</p>
+
+<h2>Antecedentes</h2>
+<table class="doc-grid">
+<tr><td class="k">Personales</td><td colspan="3">{{ campo.antecedentes_personales }}</td></tr>
+<tr><td class="k">Familiares</td><td colspan="3">{{ campo.antecedentes_familiares }}</td></tr>
+<tr><td class="k">Intervenciones quirúrgicas</td><td colspan="3">{{ campo.intervenciones_qx }}</td></tr>
+<tr><td class="k">Alergias</td><td>{{ campo.alergias_hc }}</td>
+    <td class="k">Medicación habitual</td><td>{{ campo.medicacion_habitual }}</td></tr>
+</table>
+
+<h2>Funciones vitales</h2>
+<table class="doc-table">
+<tr><th>PA</th><th>FC</th><th>FR</th><th>T°</th><th>SatO₂</th><th>Peso</th><th>Talla</th></tr>
+<tr><td>{{ campo.pa }}</td><td>{{ campo.fc }}</td><td>{{ campo.fr }}</td><td>{{ campo.temperatura }}</td>
+    <td>{{ campo.saturacion }} %</td><td>{{ campo.peso_hc }} kg</td><td>{{ campo.talla_hc }} cm</td></tr>
+</table>
+
+<h2>Ectoscopía</h2>
+<p>{{ campo.ectoscopia }}</p>
+
+<h2>Examen físico</h2>
+<table class="doc-grid">
+<tr><td class="k">Estado general</td><td colspan="3">{{ campo.estado_general }}</td></tr>
+<tr><td class="k">Piel y TCSC</td><td colspan="3">{{ campo.piel_tcsc }}</td></tr>
+<tr><td class="k">Sistema osteomuscular</td><td colspan="3">{{ campo.osteomuscular }}</td></tr>
+<tr><td class="k">Cabeza y cuello</td><td colspan="3">{{ campo.cabeza_cuello }}</td></tr>
+<tr><td class="k">Tórax y pulmones</td><td colspan="3">{{ campo.torax_pulmones }}</td></tr>
+<tr><td class="k">Cardiovascular</td><td colspan="3">{{ campo.cardiovascular }}</td></tr>
+<tr><td class="k">Abdomen</td><td colspan="3">{{ campo.abdomen }}</td></tr>
+<tr><td class="k">Genitourinario</td><td colspan="3">{{ campo.genitourinario }}</td></tr>
+<tr><td class="k">Neurológico</td><td colspan="3">{{ campo.neurologico }}</td></tr>
+</table>
+<p><strong>Otros hallazgos:</strong> {{ campo.otros_examen|parrafos }}</p>
+
+<h2>Diagnóstico</h2>
+<p>{{ campo.diagnosticos_hc|parrafos }}</p>
+<p><strong>CIE-10:</strong> {{ campo.cie10_hc }}</p>
+
+<h2>Exámenes auxiliares</h2>
+<p>{{ campo.examenes|parrafos }}</p>
+
+<h2>Plan de trabajo</h2>
+<p>{{ campo.plan_hc|parrafos }}</p>"""
+        + SIGN_DOCTOR
+    ),
+}
+
+
 EVOLUCION_HOSPITALIZACION = {
     "code": "FIC-HOS",
     "version": 1,
@@ -2992,6 +3107,810 @@ posanestésica.</p>
 <div class="role">Enfermera(o) de la URPA</div>
 <div class="hint">{{ profesional.nombre }} · Colegiatura {{ profesional.cmp }}</div></div>
 </div>"""
+    ),
+}
+
+
+
+# --- Historia clínica de emergencia ---------------------------------------
+
+HISTORIA_EMERGENCIA = {
+    "code": "FIC-EMG",
+    "version": 1,
+    "family": FICHA,
+    "title": "Historia clínica de emergencia",
+    "description": "Motivo y relato de la emergencia, examen clínico, diagnóstico y tratamiento",
+    "study_type": None,
+    "requires_signature": True,
+    "fields": [
+        {"key": "hora_ingreso", "label": "Hora de ingreso", "type": "text", "group": "Emergencia", "placeholder": "22:15"},
+        {"key": "motivo_emergencia", "label": "Motivo de la emergencia", "type": "text", "group": "Emergencia", "required": True, "wide": True},
+        {"key": "relato_emergencia", "label": "Relato de la emergencia", "type": "textarea", "group": "Emergencia", "required": True, "wide": True},
+        {"key": "antecedentes_emg", "label": "Antecedentes", "type": "textarea", "group": "Emergencia", "default": "Niega", "wide": True},
+        {"key": "pa_emg", "label": "Presión arterial (mmHg)", "type": "text", "group": "Examen clínico", "placeholder": "120/80"},
+        measure("fc_emg", "Frecuencia cardíaca (lpm)", "Examen clínico"),
+        measure("fr_emg", "Frecuencia respiratoria (rpm)", "Examen clínico"),
+        measure("t_emg", "Temperatura (°C)", "Examen clínico"),
+        measure("sat_emg", "Saturación de oxígeno (%)", "Examen clínico"),
+        measure("peso_emg", "Peso (kg)", "Examen clínico"),
+        {"key": "ectoscopia_emg", "label": "Ectoscopía", "type": "text", "group": "Examen clínico", "default": "Aparente regular estado general, lúcido y orientado", "wide": True},
+        {"key": "examen_fisico_emg", "label": "Examen físico", "type": "textarea", "group": "Examen clínico", "required": True, "wide": True},
+        {"key": "otros_emg", "label": "Otros hallazgos", "type": "textarea", "group": "Examen clínico", "default": "Ninguno", "wide": True},
+        {"key": "diagnostico_emg", "label": "Diagnóstico", "type": "textarea", "group": "Diagnóstico y tratamiento", "required": True, "wide": True},
+        {"key": "cie10_emg", "label": "CIE-10", "type": "text", "group": "Diagnóstico y tratamiento", "placeholder": "S01.0"},
+        {"key": "examenes_emg", "label": "Exámenes auxiliares", "type": "textarea", "group": "Diagnóstico y tratamiento", "default": "Ninguno", "wide": True},
+        {"key": "tratamiento_emg", "label": "Tratamiento indicado (Rp.)", "type": "textarea", "group": "Diagnóstico y tratamiento", "required": True, "wide": True},
+        # La hoja en papel termina en el Rp. y deja sin registrar en qué acabó
+        # la atención, que es lo que después se reclama de un acta de
+        # emergencia: si el paciente se fue de alta, quedó en observación o
+        # salió referido, y en qué condición.
+        choice("destino_emg", "Destino del paciente", "Destino",
+               opts("Alta", "Observación", "Hospitalización", "Referencia", "Fallecido"),
+               "Alta"),
+        choice("condicion_emg", "Condición al egreso", "Destino", ESTADO_PACIENTE, "Estable"),
+        {"key": "hora_salida", "label": "Hora de salida", "type": "text", "group": "Destino", "placeholder": "23:40"},
+    ],
+    "body": (
+        HEADER_CLINICAL
+        + """<h2>Emergencia</h2>
+<table class="doc-grid">
+<tr><td class="k">Hora de ingreso</td><td>{{ campo.hora_ingreso }}</td>
+    <td class="k">Motivo</td><td>{{ campo.motivo_emergencia }}</td></tr>
+</table>
+<p><strong>Relato:</strong> {{ campo.relato_emergencia|parrafos }}</p>
+<p><strong>Antecedentes:</strong> {{ campo.antecedentes_emg|parrafos }}</p>
+
+<h2>Examen clínico</h2>
+<table class="doc-table">
+<tr><th>PA</th><th>FC</th><th>FR</th><th>T°</th><th>SatO₂</th><th>Peso</th></tr>
+<tr><td>{{ campo.pa_emg }}</td><td>{{ campo.fc_emg }}</td><td>{{ campo.fr_emg }}</td>
+    <td>{{ campo.t_emg }}</td><td>{{ campo.sat_emg }} %</td><td>{{ campo.peso_emg }} kg</td></tr>
+</table>
+<p><strong>Ectoscopía:</strong> {{ campo.ectoscopia_emg }}</p>
+<p>{{ campo.examen_fisico_emg|parrafos }}</p>
+<p><strong>Otros hallazgos:</strong> {{ campo.otros_emg|parrafos }}</p>
+
+<h2>Diagnóstico</h2>
+<p>{{ campo.diagnostico_emg|parrafos }}</p>
+<p><strong>CIE-10:</strong> {{ campo.cie10_emg }}</p>
+
+<h2>Exámenes auxiliares</h2>
+<p>{{ campo.examenes_emg|parrafos }}</p>
+
+<h2>Tratamiento</h2>
+<p>{{ campo.tratamiento_emg|parrafos }}</p>
+
+<h2>Destino</h2>
+<table class="doc-grid">
+<tr><td class="k">Destino del paciente</td><td>{{ campo.destino_emg }}</td>
+    <td class="k">Condición al egreso</td><td>{{ campo.condicion_emg }}</td></tr>
+<tr><td class="k">Hora de ingreso</td><td>{{ campo.hora_ingreso }}</td>
+    <td class="k">Hora de salida</td><td>{{ campo.hora_salida }}</td></tr>
+</table>"""
+        + SIGN_DOCTOR
+    ),
+}
+
+
+# --- Historia clínica gineco-obstétrica ------------------------------------
+
+# Los antecedentes personales y familiares de la hoja son casillas que se
+# marcan; aquí son selectores para que queden consultables entre controles.
+_GO_ANTECEDENTES = (
+    ("dbm", "Diabetes mellitus"),
+    ("hta", "Hipertensión arterial"),
+    ("ca", "Cáncer"),
+    ("ram", "Reacción adversa a medicamentos"),
+    ("qx", "Intervención quirúrgica"),
+)
+
+_GO_EXAMEN = (
+    ("go_cabeza", "Cabeza y cuello", "Sin alteraciones"),
+    ("go_piel", "Piel y mucosas", "Tibias, hidratadas, no palidez"),
+    ("go_mamas", "Examen de mamas", "Simétricas, no nódulos, no secreción"),
+    ("go_abdomen", "Examen abdominal", "Blando, depresible, no doloroso"),
+    ("go_pelvico", "Examen pélvico", "No realizado"),
+    ("go_genitourinario", "Examen genitourinario", "Sin alteraciones"),
+    ("go_miembros", "Miembros inferiores", "No edemas, no várices"),
+)
+
+HISTORIA_GINECO_OBSTETRICA = {
+    "code": "FIC-GO",
+    "version": 1,
+    "family": FICHA,
+    "title": "Historia clínica gineco-obstétrica",
+    "description": "Antecedentes ginecológicos y obstétricos, examen y diagnóstico",
+    "study_type": None,
+    "requires_signature": True,
+    "fields": [
+        {"key": "go_acompanante", "label": "Acompañante", "type": "text", "group": "Acompañante", "wide": True},
+        {"key": "go_parentesco", "label": "Parentesco", "type": "text", "group": "Acompañante"},
+        {"key": "go_acomp_telefono", "label": "Teléfono del acompañante", "type": "text", "group": "Acompañante"},
+        {"key": "go_pa", "label": "Presión arterial (mmHg)", "type": "text", "group": "Examen clínico", "placeholder": "110/70"},
+        measure("go_temp", "Temperatura (°C)", "Examen clínico"),
+        measure("go_fc", "Frecuencia cardíaca (lpm)", "Examen clínico"),
+        measure("go_fr", "Frecuencia respiratoria (rpm)", "Examen clínico"),
+        measure("go_peso", "Peso (kg)", "Examen clínico"),
+        measure("go_talla", "Talla (cm)", "Examen clínico"),
+        measure("go_imc", "IMC", "Examen clínico"),
+        *[
+            choice(f"go_ap_{key}", label, "Antecedentes personales", SI_NO, "No")
+            for key, label in _GO_ANTECEDENTES
+        ],
+        {"key": "go_ap_detalle", "label": "Detalle de los antecedentes personales", "type": "text", "group": "Antecedentes personales", "default": "Ninguno", "wide": True},
+        {"key": "go_menarquia", "label": "Menarquia (edad)", "type": "text", "group": "Antecedentes ginecológicos", "placeholder": "13 años"},
+        {"key": "go_rc", "label": "Régimen catamenial", "type": "text", "group": "Antecedentes ginecológicos", "placeholder": "5/28"},
+        {"key": "go_irs", "label": "Inicio de relaciones sexuales (edad)", "type": "text", "group": "Antecedentes ginecológicos"},
+        measure("go_parejas", "N.° de parejas sexuales", "Antecedentes ginecológicos"),
+        {"key": "go_mac", "label": "Método anticonceptivo", "type": "text", "group": "Antecedentes ginecológicos", "default": "Ninguno"},
+        {"key": "go_formula", "label": "Fórmula obstétrica (G / P)", "type": "text", "group": "Antecedentes ginecológicos", "placeholder": "G3 P2-0-1-2"},
+        {"key": "go_fp1", "label": "Fecha del parto 1", "type": "text", "group": "Antecedentes ginecológicos"},
+        {"key": "go_fp2", "label": "Fecha del parto 2", "type": "text", "group": "Antecedentes ginecológicos"},
+        {"key": "go_fp3", "label": "Fecha del parto 3", "type": "text", "group": "Antecedentes ginecológicos"},
+        {"key": "go_fp4", "label": "Fecha del parto 4", "type": "text", "group": "Antecedentes ginecológicos"},
+        {"key": "go_fur", "label": "FUR · fecha de la última regla", "type": "date", "group": "Antecedentes ginecológicos"},
+        {"key": "go_fupap", "label": "FUPAP · último papanicolau", "type": "date", "group": "Antecedentes ginecológicos"},
+        {"key": "go_fpp", "label": "FPP · fecha probable de parto", "type": "date", "group": "Antecedentes ginecológicos"},
+        {"key": "go_gine_otros", "label": "Otros antecedentes ginecológicos", "type": "text", "group": "Antecedentes ginecológicos", "default": "Ninguno", "wide": True},
+        *[
+            choice(f"go_af_{key}", label, "Antecedentes familiares", SI_NO, "No")
+            for key, label in _GO_ANTECEDENTES
+        ],
+        {"key": "go_af_detalle", "label": "Detalle de los antecedentes familiares", "type": "text", "group": "Antecedentes familiares", "default": "Ninguno", "wide": True},
+        {"key": "go_motivo", "label": "Motivo de la consulta", "type": "text", "group": "Enfermedad actual", "required": True, "wide": True},
+        measure("go_tiempo", "Tiempo de enfermedad (días)", "Enfermedad actual"),
+        choice("go_inicio", "Forma de inicio", "Enfermedad actual", opts("Insidioso", "Brusco"), "Insidioso"),
+        choice("go_curso", "Curso", "Enfermedad actual", opts("Progresivo", "Estacionario", "Remitente"), "Progresivo"),
+        {"key": "go_relato", "label": "Relato de la enfermedad", "type": "textarea", "group": "Enfermedad actual", "required": True, "wide": True},
+        {"key": "go_ectoscopia", "label": "Ectoscopía", "type": "text", "group": "Examen físico", "default": "Aparente buen estado general, lúcida y orientada", "wide": True},
+        *[
+            {"key": key, "label": label, "type": "text", "group": "Examen físico", "default": default, "wide": True}
+            for key, label, default in _GO_EXAMEN
+        ],
+        {"key": "go_diagnostico", "label": "Diagnóstico", "type": "textarea", "group": "Diagnóstico y plan", "required": True, "wide": True},
+        {"key": "go_cie10", "label": "CIE-10", "type": "text", "group": "Diagnóstico y plan", "placeholder": "Z34.0"},
+        {"key": "go_examenes", "label": "Exámenes auxiliares", "type": "textarea", "group": "Diagnóstico y plan", "default": "Ninguno", "wide": True},
+        {"key": "go_tratamiento", "label": "Tratamiento", "type": "textarea", "group": "Diagnóstico y plan", "required": True, "wide": True},
+        {"key": "go_cita", "label": "Próxima cita", "type": "text", "group": "Diagnóstico y plan"},
+    ],
+    "body": (
+        HEADER_CLINICAL
+        + """<table class="doc-grid">
+<tr><td class="k">Acompañante</td><td>{{ campo.go_acompanante }}</td>
+    <td class="k">Parentesco</td><td>{{ campo.go_parentesco }}</td></tr>
+<tr><td class="k">Teléfono</td><td colspan="3">{{ campo.go_acomp_telefono }}</td></tr>
+</table>
+
+<h2>Examen clínico</h2>
+<table class="doc-table">
+<tr><th>PA</th><th>T°</th><th>FC</th><th>FR</th><th>Peso</th><th>Talla</th><th>IMC</th></tr>
+<tr><td>{{ campo.go_pa }}</td><td>{{ campo.go_temp }}</td><td>{{ campo.go_fc }}</td>
+    <td>{{ campo.go_fr }}</td><td>{{ campo.go_peso }} kg</td><td>{{ campo.go_talla }} cm</td>
+    <td>{{ campo.go_imc }}</td></tr>
+</table>
+
+<h2>Antecedentes personales</h2>
+<table class="doc-table">
+<tr><th>DBM</th><th>HTA</th><th>CA</th><th>RAM</th><th>Int. quirúrgica</th></tr>
+<tr><td>{{ campo.go_ap_dbm }}</td><td>{{ campo.go_ap_hta }}</td><td>{{ campo.go_ap_ca }}</td>
+    <td>{{ campo.go_ap_ram }}</td><td>{{ campo.go_ap_qx }}</td></tr>
+</table>
+<p>{{ campo.go_ap_detalle }}</p>
+
+<h2>Antecedentes ginecológicos y obstétricos</h2>
+<table class="doc-grid">
+<tr><td class="k">Menarquia</td><td>{{ campo.go_menarquia }}</td>
+    <td class="k">Régimen catamenial</td><td>{{ campo.go_rc }}</td></tr>
+<tr><td class="k">Inicio de relaciones</td><td>{{ campo.go_irs }}</td>
+    <td class="k">N.° de parejas</td><td>{{ campo.go_parejas }}</td></tr>
+<tr><td class="k">Método anticonceptivo</td><td>{{ campo.go_mac }}</td>
+    <td class="k">Fórmula obstétrica</td><td>{{ campo.go_formula }}</td></tr>
+<tr><td class="k">FUR</td><td>{{ campo.go_fur }}</td>
+    <td class="k">FPP</td><td>{{ campo.go_fpp }}</td></tr>
+<tr><td class="k">FUPAP</td><td colspan="3">{{ campo.go_fupap }}</td></tr>
+</table>
+<table class="doc-table">
+<tr><th>Parto 1</th><th>Parto 2</th><th>Parto 3</th><th>Parto 4</th></tr>
+<tr><td>{{ campo.go_fp1 }}</td><td>{{ campo.go_fp2 }}</td>
+    <td>{{ campo.go_fp3 }}</td><td>{{ campo.go_fp4 }}</td></tr>
+</table>
+<p><strong>Otros:</strong> {{ campo.go_gine_otros }}</p>
+
+<h2>Antecedentes familiares</h2>
+<table class="doc-table">
+<tr><th>DBM</th><th>HTA</th><th>CA</th><th>RAM</th><th>Int. quirúrgica</th></tr>
+<tr><td>{{ campo.go_af_dbm }}</td><td>{{ campo.go_af_hta }}</td><td>{{ campo.go_af_ca }}</td>
+    <td>{{ campo.go_af_ram }}</td><td>{{ campo.go_af_qx }}</td></tr>
+</table>
+<p>{{ campo.go_af_detalle }}</p>
+
+<h2>Enfermedad actual</h2>
+<table class="doc-grid">
+<tr><td class="k">Motivo de la consulta</td><td colspan="3">{{ campo.go_motivo }}</td></tr>
+<tr><td class="k">Tiempo de enfermedad</td><td>{{ campo.go_tiempo }} días</td>
+    <td class="k">Inicio y curso</td><td>{{ campo.go_inicio }} · {{ campo.go_curso }}</td></tr>
+</table>
+<p>{{ campo.go_relato|parrafos }}</p>
+
+<h2>Examen físico</h2>
+<p><strong>Ectoscopía:</strong> {{ campo.go_ectoscopia }}</p>
+<table class="doc-grid">
+<tr><td class="k">Cabeza y cuello</td><td colspan="3">{{ campo.go_cabeza }}</td></tr>
+<tr><td class="k">Piel y mucosas</td><td colspan="3">{{ campo.go_piel }}</td></tr>
+<tr><td class="k">Mamas</td><td colspan="3">{{ campo.go_mamas }}</td></tr>
+<tr><td class="k">Abdomen</td><td colspan="3">{{ campo.go_abdomen }}</td></tr>
+<tr><td class="k">Pélvico</td><td colspan="3">{{ campo.go_pelvico }}</td></tr>
+<tr><td class="k">Genitourinario</td><td colspan="3">{{ campo.go_genitourinario }}</td></tr>
+<tr><td class="k">Miembros inferiores</td><td colspan="3">{{ campo.go_miembros }}</td></tr>
+</table>
+
+<h2>Diagnóstico</h2>
+<p>{{ campo.go_diagnostico|parrafos }}</p>
+<p><strong>CIE-10:</strong> {{ campo.go_cie10 }}</p>
+
+<h2>Exámenes auxiliares</h2>
+<p>{{ campo.go_examenes|parrafos }}</p>
+
+<h2>Tratamiento</h2>
+<p>{{ campo.go_tratamiento|parrafos }}</p>
+<p><strong>Próxima cita:</strong> {{ campo.go_cita }}</p>"""
+        + SIGN_DOCTOR
+    ),
+}
+
+HISTORIA_GINECO_CONTINUADORA = {
+    "code": "FIC-GOC",
+    "version": 1,
+    "family": FICHA,
+    "title": "Historia clínica continuadora gineco-obstétrica",
+    "description": "Control de seguimiento: examen clínico, evolución, diagnóstico y tratamiento",
+    "study_type": None,
+    "requires_signature": True,
+    "fields": [
+        {"key": "goc_acompanante", "label": "Acompañante", "type": "text", "group": "Acompañante", "wide": True},
+        {"key": "goc_parentesco", "label": "Parentesco", "type": "text", "group": "Acompañante"},
+        {"key": "goc_acomp_telefono", "label": "Teléfono del acompañante", "type": "text", "group": "Acompañante"},
+        {"key": "goc_pa", "label": "Presión arterial (mmHg)", "type": "text", "group": "Examen clínico", "placeholder": "110/70"},
+        measure("goc_temp", "Temperatura (°C)", "Examen clínico"),
+        measure("goc_fc", "Frecuencia cardíaca (lpm)", "Examen clínico"),
+        measure("goc_fr", "Frecuencia respiratoria (rpm)", "Examen clínico"),
+        measure("goc_peso", "Peso (kg)", "Examen clínico"),
+        measure("goc_talla", "Talla (cm)", "Examen clínico"),
+        measure("goc_imc", "IMC", "Examen clínico"),
+        {"key": "goc_motivo", "label": "Motivo de la consulta", "type": "textarea", "group": "Control", "required": True, "wide": True},
+        {"key": "goc_cabeza", "label": "Cabeza y cuello", "type": "text", "group": "Al examen", "default": "Sin alteraciones", "wide": True},
+        {"key": "goc_piel", "label": "Piel y mucosas", "type": "text", "group": "Al examen", "default": "Tibias, hidratadas, no palidez", "wide": True},
+        {"key": "goc_mamas", "label": "Examen de mamas", "type": "text", "group": "Al examen", "default": "Simétricas, no nódulos, no secreción", "wide": True},
+        {"key": "goc_abdomen", "label": "Examen abdominal", "type": "text", "group": "Al examen", "default": "Blando, depresible, no doloroso", "wide": True},
+        {"key": "goc_genitourinario", "label": "Examen genitourinario", "type": "text", "group": "Al examen", "default": "Sin alteraciones", "wide": True},
+        {"key": "goc_miembros", "label": "Miembros inferiores", "type": "text", "group": "Al examen", "default": "No edemas, no várices", "wide": True},
+        {"key": "goc_diagnostico", "label": "Diagnóstico", "type": "textarea", "group": "Diagnóstico y plan", "required": True, "wide": True},
+        {"key": "goc_examenes", "label": "Exámenes auxiliares", "type": "textarea", "group": "Diagnóstico y plan", "default": "Ninguno", "wide": True},
+        {"key": "goc_tratamiento", "label": "Tratamiento", "type": "textarea", "group": "Diagnóstico y plan", "required": True, "wide": True},
+        {"key": "goc_cita", "label": "Próxima cita", "type": "text", "group": "Diagnóstico y plan"},
+    ],
+    "body": (
+        HEADER_CLINICAL
+        + """<table class="doc-grid">
+<tr><td class="k">Acompañante</td><td>{{ campo.goc_acompanante }}</td>
+    <td class="k">Parentesco</td><td>{{ campo.goc_parentesco }}</td></tr>
+<tr><td class="k">Teléfono</td><td colspan="3">{{ campo.goc_acomp_telefono }}</td></tr>
+</table>
+
+<h2>Examen clínico</h2>
+<table class="doc-table">
+<tr><th>PA</th><th>T°</th><th>FC</th><th>FR</th><th>Peso</th><th>Talla</th><th>IMC</th></tr>
+<tr><td>{{ campo.goc_pa }}</td><td>{{ campo.goc_temp }}</td><td>{{ campo.goc_fc }}</td>
+    <td>{{ campo.goc_fr }}</td><td>{{ campo.goc_peso }} kg</td><td>{{ campo.goc_talla }} cm</td>
+    <td>{{ campo.goc_imc }}</td></tr>
+</table>
+
+<h2>Motivo de la consulta</h2>
+<p>{{ campo.goc_motivo|parrafos }}</p>
+
+<h2>Al examen</h2>
+<table class="doc-grid">
+<tr><td class="k">Cabeza y cuello</td><td colspan="3">{{ campo.goc_cabeza }}</td></tr>
+<tr><td class="k">Piel y mucosas</td><td colspan="3">{{ campo.goc_piel }}</td></tr>
+<tr><td class="k">Mamas</td><td colspan="3">{{ campo.goc_mamas }}</td></tr>
+<tr><td class="k">Abdomen</td><td colspan="3">{{ campo.goc_abdomen }}</td></tr>
+<tr><td class="k">Genitourinario</td><td colspan="3">{{ campo.goc_genitourinario }}</td></tr>
+<tr><td class="k">Miembros inferiores</td><td colspan="3">{{ campo.goc_miembros }}</td></tr>
+</table>
+
+<h2>Diagnóstico</h2>
+<p>{{ campo.goc_diagnostico|parrafos }}</p>
+
+<h2>Exámenes auxiliares</h2>
+<p>{{ campo.goc_examenes|parrafos }}</p>
+
+<h2>Tratamiento</h2>
+<p>{{ campo.goc_tratamiento|parrafos }}</p>
+<p><strong>Próxima cita:</strong> {{ campo.goc_cita }}</p>"""
+        + SIGN_DOCTOR
+    ),
+}
+
+
+# --- Historia clínica odontológica -----------------------------------------
+
+HISTORIA_ODONTOLOGICA = {
+    "code": "FIC-ODO",
+    "version": 1,
+    "family": FICHA,
+    "title": "Historia clínica odontológica",
+    "description": "Anamnesis, examen odontoestomatológico, diagnóstico, pronóstico y plan",
+    "study_type": None,
+    "requires_signature": True,
+    "fields": [
+        {"key": "odo_procedencia", "label": "Procedencia", "type": "text", "group": "Filiación"},
+        {"key": "odo_motivo", "label": "Motivo de la consulta", "type": "text", "group": "Anamnesis", "required": True, "wide": True},
+        {"key": "odo_enfermedad", "label": "Enfermedad actual", "type": "textarea", "group": "Anamnesis", "required": True, "wide": True},
+        measure("odo_tiempo", "Tiempo de enfermedad (días)", "Anamnesis"),
+        {"key": "odo_signos", "label": "Signos y síntomas principales", "type": "text", "group": "Anamnesis", "wide": True},
+        {"key": "odo_relato", "label": "Relato cronológico", "type": "textarea", "group": "Anamnesis", "wide": True},
+        {"key": "odo_funciones", "label": "Funciones biológicas", "type": "text", "group": "Anamnesis", "default": "Conservadas", "wide": True},
+        {"key": "odo_ant_familiares", "label": "Antecedentes familiares", "type": "textarea", "group": "Antecedentes", "default": "Niega", "wide": True},
+        {"key": "odo_ant_personales", "label": "Antecedentes personales", "type": "textarea", "group": "Antecedentes", "default": "Niega", "wide": True},
+        {"key": "odo_pa", "label": "Presión arterial (mmHg)", "type": "text", "group": "Signos vitales", "placeholder": "120/80"},
+        measure("odo_pulso", "Pulso (lpm)", "Signos vitales"),
+        measure("odo_temp", "Temperatura (°C)", "Signos vitales"),
+        measure("odo_fc", "Frecuencia cardíaca (lpm)", "Signos vitales"),
+        measure("odo_fr", "Frecuencia respiratoria (rpm)", "Signos vitales"),
+        {"key": "odo_examen_general", "label": "Examen clínico general", "type": "textarea", "group": "Examen clínico", "default": "Sin alteraciones", "wide": True},
+        {"key": "odo_examen_esto", "label": "Examen clínico odontoestomatológico", "type": "textarea", "group": "Examen clínico", "required": True, "wide": True},
+        {"key": "odo_odontograma", "label": "Hallazgos del odontograma por pieza", "type": "textarea", "group": "Examen clínico", "help": "Pieza y hallazgo, uno por línea. El gráfico se adjunta aparte.", "wide": True},
+        {"key": "odo_dx_presuntivo", "label": "Diagnóstico presuntivo", "type": "textarea", "group": "Diagnóstico", "required": True, "wide": True},
+        {"key": "odo_dx_definitivo", "label": "Diagnóstico definitivo", "type": "textarea", "group": "Diagnóstico", "wide": True},
+        {"key": "odo_plan", "label": "Plan de tratamiento", "type": "textarea", "group": "Plan", "required": True, "wide": True},
+        choice("odo_pronostico", "Pronóstico", "Plan",
+               opts("Favorable", "Reservado", "Desfavorable"), "Favorable"),
+        {"key": "odo_tratamiento", "label": "Tratamiento y recomendaciones", "type": "textarea", "group": "Plan", "required": True, "wide": True},
+        {"key": "odo_control", "label": "Control y evolución", "type": "textarea", "group": "Plan", "default": "Pendiente", "wide": True},
+    ],
+    "body": (
+        HEADER_CLINICAL
+        + """<h2>Filiación</h2>
+<table class="doc-grid">
+<tr><td class="k">Procedencia</td><td>{{ campo.odo_procedencia }}</td>
+    <td class="k">Ocupación</td><td>{{ paciente.ocupacion }}</td></tr>
+<tr><td class="k">Domicilio</td><td colspan="3">{{ paciente.direccion }}</td></tr>
+</table>
+
+<h2>Anamnesis</h2>
+<table class="doc-grid">
+<tr><td class="k">Motivo de la consulta</td><td colspan="3">{{ campo.odo_motivo }}</td></tr>
+<tr><td class="k">Tiempo de enfermedad</td><td>{{ campo.odo_tiempo }} días</td>
+    <td class="k">Funciones biológicas</td><td>{{ campo.odo_funciones }}</td></tr>
+</table>
+<p><strong>Enfermedad actual:</strong> {{ campo.odo_enfermedad|parrafos }}</p>
+<p><strong>Signos y síntomas principales:</strong> {{ campo.odo_signos }}</p>
+<p><strong>Relato cronológico:</strong> {{ campo.odo_relato|parrafos }}</p>
+
+<h2>Antecedentes</h2>
+<table class="doc-grid">
+<tr><td class="k">Familiares</td><td colspan="3">{{ campo.odo_ant_familiares }}</td></tr>
+<tr><td class="k">Personales</td><td colspan="3">{{ campo.odo_ant_personales }}</td></tr>
+</table>
+
+<h2>Signos vitales</h2>
+<table class="doc-table">
+<tr><th>PA</th><th>Pulso</th><th>T°</th><th>FC</th><th>FR</th></tr>
+<tr><td>{{ campo.odo_pa }}</td><td>{{ campo.odo_pulso }}</td><td>{{ campo.odo_temp }}</td>
+    <td>{{ campo.odo_fc }}</td><td>{{ campo.odo_fr }}</td></tr>
+</table>
+
+<h2>Examen clínico</h2>
+<p><strong>General:</strong> {{ campo.odo_examen_general|parrafos }}</p>
+<p><strong>Odontoestomatológico:</strong> {{ campo.odo_examen_esto|parrafos }}</p>
+<p><strong>Odontograma:</strong> {{ campo.odo_odontograma|parrafos }}</p>
+
+<h2>Diagnóstico</h2>
+<p><strong>Presuntivo:</strong> {{ campo.odo_dx_presuntivo|parrafos }}</p>
+<p><strong>Definitivo:</strong> {{ campo.odo_dx_definitivo|parrafos }}</p>
+
+<h2>Plan de tratamiento</h2>
+<p>{{ campo.odo_plan|parrafos }}</p>
+<p><strong>Pronóstico:</strong> {{ campo.odo_pronostico }}</p>
+
+<h2>Tratamiento y recomendaciones</h2>
+<p>{{ campo.odo_tratamiento|parrafos }}</p>
+
+<h2>Control y evolución</h2>
+<p>{{ campo.odo_control|parrafos }}</p>"""
+        + """<div class="doc-signatures">
+<div class="sign"><div class="line"></div>
+<div class="role">Cirujano dentista</div>
+<div class="hint">{{ profesional.nombre }} · COP {{ profesional.cmp }}</div></div>
+</div>"""
+    ),
+}
+
+
+# --- Procedimientos estéticos ----------------------------------------------
+
+# Las dos hojas comparten las mismas nueve áreas faciales y la misma cabecera;
+# solo cambian el producto y la unidad en que se anota lo aplicado.
+_AREAS_FACIALES = (
+    ("frontal", "Frontal"),
+    ("corrugador", "Corrugador"),
+    ("orbicular", "Orbicular de los ojos"),
+    ("nasal", "Nasal"),
+    ("elevador", "Elevador del labio superior"),
+    ("masetero", "Masetero"),
+    ("depresor", "Depresor del ángulo de la boca"),
+    ("mentalis", "Borla del mentón / mentalis"),
+    ("platisma", "Platisma del cuello"),
+)
+
+
+def _ficha_estetica(code: str, title: str, description: str, unidad: str, rol: str) -> dict[str, Any]:
+    """Hoja de un procedimiento estético aplicado por áreas faciales."""
+    filas = "".join(
+        f"<tr><td>{label}</td><td>{{{{ campo.area_{key} }}}}</td></tr>"
+        for key, label in _AREAS_FACIALES
+    )
+    return {
+        "code": code,
+        "version": 1,
+        "family": FICHA,
+        "title": title,
+        "description": description,
+        "study_type": None,
+        "requires_signature": True,
+        "fields": [
+            choice("est_previo", "Tratamiento previo", "Antecedente del tratamiento", SI_NO, "No"),
+            {"key": "est_producto", "label": "Producto aplicado", "type": "text", "group": "Antecedente del tratamiento", "wide": True},
+            {"key": "est_ultima", "label": "Fecha de la última aplicación", "type": "date", "group": "Antecedente del tratamiento"},
+            {"key": "est_regiones", "label": "Regiones de aplicación", "type": "text", "group": "Antecedente del tratamiento", "wide": True},
+            *[
+                measure(f"area_{key}", f"{label} ({unidad})", "Áreas tratadas")
+                for key, label in _AREAS_FACIALES
+            ],
+            {"key": "est_fecha", "label": "Fecha de aplicación", "type": "date", "group": "Aplicación", "required": True},
+            {"key": "est_observaciones", "label": "Observaciones del médico", "type": "textarea", "group": "Aplicación", "default": "Ninguna", "wide": True},
+            {"key": "est_control", "label": "Próxima cita de control", "type": "date", "group": "Aplicación"},
+        ],
+        "body": (
+            HEADER_CLINICAL
+            + f"""<h2>Antecedente del tratamiento</h2>
+<table class="doc-grid">
+<tr><td class="k">Tratamiento previo</td><td>{{{{ campo.est_previo }}}}</td>
+    <td class="k">Producto aplicado</td><td>{{{{ campo.est_producto }}}}</td></tr>
+<tr><td class="k">Última aplicación</td><td>{{{{ campo.est_ultima }}}}</td>
+    <td class="k">Regiones</td><td>{{{{ campo.est_regiones }}}}</td></tr>
+</table>
+
+<h2>Áreas tratadas</h2>
+<table class="doc-table">
+<tr><th>Área</th><th>{unidad.capitalize()}</th></tr>
+{filas}</table>
+
+<h2>Aplicación</h2>
+<table class="doc-grid">
+<tr><td class="k">Fecha de aplicación</td><td>{{{{ campo.est_fecha }}}}</td>
+    <td class="k">Próximo control</td><td>{{{{ campo.est_control }}}}</td></tr>
+</table>
+<p><strong>Observaciones:</strong> {{{{ campo.est_observaciones|parrafos }}}}</p>"""
+            + f"""<div class="doc-signatures">
+<div class="sign"><div class="line"></div>
+<div class="role">Firma del paciente</div>
+<div class="hint">{{{{ paciente.nombre_completo }}}} · {{{{ paciente.tipo_documento }}}} {{{{ paciente.documento }}}}</div></div>
+<div class="sign"><div class="line"></div>
+<div class="role">{rol}</div>
+<div class="hint">{{{{ profesional.nombre }}}} · CMP {{{{ profesional.cmp }}}}</div></div>
+</div>"""
+        ),
+    }
+
+
+HISTORIA_BOTOX = _ficha_estetica(
+    "FIC-BTX",
+    "Historia clínica de toxina botulínica",
+    "Áreas faciales tratadas y unidades aplicadas",
+    "unidades",
+    "Médico que aplica",
+)
+
+HISTORIA_PLASMA = _ficha_estetica(
+    "FIC-PRP",
+    "Historia clínica de plasma rico en plaquetas",
+    "Áreas faciales tratadas y volumen aplicado",
+    "unidades",
+    "Médico que aplica",
+)
+
+
+# --- Atención integral del niño --------------------------------------------
+
+# Signos de peligro del formato MINSA, agrupados por edad como en la hoja.
+_PELIGRO_MENOR_2M = (
+    ("pel_mama", "No quiere mamar ni succiona"),
+    ("pel_convul_rn", "Convulsiones"),
+    ("pel_fontanela", "Fontanela abombada"),
+    ("pel_ombligo", "Enrojecimiento del ombligo que se extiende a la piel"),
+    ("pel_fiebre", "Fiebre o temperatura baja"),
+    ("pel_nuca", "Rigidez de nuca"),
+    ("pel_pustulas", "Pústulas muchas y extensas"),
+    ("pel_letargico_rn", "Letárgico o comatoso"),
+)
+
+_PELIGRO_2M_4A = (
+    ("pel_beber", "No puede beber ni tomar pecho"),
+    ("pel_convul", "Convulsiones"),
+    ("pel_letargico", "Letárgico o comatoso"),
+    ("pel_vomita", "Vomita todo"),
+    ("pel_estridor", "Estridor en reposo o tiraje subcostal"),
+)
+
+_PELIGRO_TODAS = (
+    ("pel_emaciacion", "Emaciación visible grave"),
+    ("pel_piel", "La piel vuelve muy lentamente"),
+    ("pel_trauma", "Traumatismos o quemaduras"),
+    ("pel_envenenamiento", "Envenenamiento"),
+    ("pel_palidez", "Palidez palmar intensa"),
+)
+
+_PELIGRO_TODOS = _PELIGRO_MENOR_2M + _PELIGRO_2M_4A + _PELIGRO_TODAS
+
+
+def _peligro_filas(items: tuple[tuple[str, str], ...]) -> str:
+    return "".join(
+        f"<tr><td>{label}</td><td>{{{{ campo.{key} }}}}</td></tr>" for key, label in items
+    )
+
+
+ATENCION_INTEGRAL_NINO = {
+    "code": "FIC-CRED",
+    "version": 1,
+    "family": FICHA,
+    "title": "Atención integral de la niña y el niño",
+    "description": "Signos de peligro, anamnesis, crecimiento, desarrollo psicomotor y acuerdos",
+    "study_type": None,
+    "requires_signature": True,
+    "fields": [
+        *[
+            choice(key, label, "Signos de peligro · menor de 2 meses", AUSENTE_PRESENTE, "Ausente")
+            for key, label in _PELIGRO_MENOR_2M
+        ],
+        *[
+            choice(key, label, "Signos de peligro · de 2 meses a 4 años", AUSENTE_PRESENTE, "Ausente")
+            for key, label in _PELIGRO_2M_4A
+        ],
+        *[
+            choice(key, label, "Signos de peligro · todas las edades", AUSENTE_PRESENTE, "Ausente")
+            for key, label in _PELIGRO_TODAS
+        ],
+        {"key": "cred_cuidador", "label": "¿Quién cuida al niño o niña?", "type": "text", "group": "Factores de riesgo", "required": True, "wide": True},
+        choice("cred_padre", "¿Participa el padre en el cuidado?", "Factores de riesgo", SI_NO, "Sí"),
+        choice("cred_afecto", "¿Recibe muestras de afecto?", "Factores de riesgo", SI_NO, "Sí"),
+        {"key": "cred_riesgo_detalle", "label": "Especifique los factores de riesgo", "type": "textarea", "group": "Factores de riesgo", "default": "Ninguno", "wide": True},
+        {"key": "cred_motivo", "label": "Motivo de consulta", "type": "text", "group": "Anamnesis", "required": True, "wide": True},
+        measure("cred_tiempo", "Tiempo de enfermedad (días)", "Anamnesis"),
+        choice("cred_inicio", "Forma de inicio", "Anamnesis", opts("Insidioso", "Brusco"), "Insidioso"),
+        choice("cred_curso", "Curso", "Anamnesis", opts("Progresivo", "Estacionario", "Remitente"), "Progresivo"),
+        measure("cred_temp", "Temperatura (°C)", "Examen físico"),
+        {"key": "cred_pa", "label": "Presión arterial (mmHg)", "type": "text", "group": "Examen físico"},
+        measure("cred_fc", "Frecuencia cardíaca (lpm)", "Examen físico"),
+        measure("cred_fr", "Frecuencia respiratoria (rpm)", "Examen físico"),
+        measure("cred_peso", "Peso (kg)", "Examen físico"),
+        measure("cred_talla", "Talla (cm)", "Examen físico"),
+        measure("cred_pc", "Perímetro cefálico (cm)", "Examen físico"),
+        {"key": "cred_examen", "label": "Hallazgos del examen físico", "type": "textarea", "group": "Examen físico", "default": "Sin alteraciones", "wide": True},
+        {"key": "cred_dx_nosologico", "label": "Diagnóstico nosológico o sindrómico", "type": "textarea", "group": "Diagnóstico", "required": True, "wide": True},
+        choice("cred_crecimiento", "Condición del crecimiento", "Diagnóstico",
+               opts("Crecimiento adecuado", "Crecimiento inadecuado"), "Crecimiento adecuado"),
+        choice("cred_nutricional", "Estado nutricional", "Diagnóstico",
+               opts("Normal", "Ganancia inadecuada de peso o talla", "Desnutrición",
+                    "Sobrepeso", "Obesidad"), "Normal"),
+        {"key": "cred_pe", "label": "P/E", "type": "text", "group": "Diagnóstico", "placeholder": "Normal"},
+        {"key": "cred_te", "label": "T/E", "type": "text", "group": "Diagnóstico", "placeholder": "Normal"},
+        {"key": "cred_pt", "label": "P/T", "type": "text", "group": "Diagnóstico", "placeholder": "Normal"},
+        choice("cred_desarrollo", "Condición del desarrollo psicomotor", "Diagnóstico",
+               opts("Normal", "Riesgo para el desarrollo", "Déficit del desarrollo",
+                    "Trastorno del desarrollo"), "Normal"),
+        {"key": "cred_desarrollo_obs", "label": "Observaciones del desarrollo", "type": "text", "group": "Diagnóstico", "default": "Ninguna", "wide": True},
+        {"key": "cred_factores", "label": "Factores condicionales de la salud, nutrición y desarrollo", "type": "textarea", "group": "Diagnóstico", "default": "Ninguno", "wide": True},
+        {"key": "cred_tratamiento", "label": "Tratamiento", "type": "textarea", "group": "Plan", "required": True, "wide": True},
+        {"key": "cred_acuerdos", "label": "Acuerdos y compromisos con la madre o cuidador", "type": "textarea", "group": "Plan", "required": True, "wide": True},
+        {"key": "cred_examenes", "label": "Exámenes auxiliares", "type": "textarea", "group": "Plan", "default": "Ninguno", "wide": True},
+        {"key": "cred_referencia", "label": "Referencia (lugar y motivo)", "type": "text", "group": "Plan", "default": "No amerita", "wide": True},
+        {"key": "cred_cita", "label": "Próxima cita", "type": "text", "group": "Plan"},
+    ],
+    "body": (
+        HEADER_CLINICAL
+        + """<h2>Descarte de signos de peligro</h2>
+<table class="doc-table">
+<tr><th>Menor de 2 meses</th><th></th></tr>"""
+        + _peligro_filas(_PELIGRO_MENOR_2M)
+        + """</table>
+<table class="doc-table">
+<tr><th>De 2 meses a 4 años</th><th></th></tr>"""
+        + _peligro_filas(_PELIGRO_2M_4A)
+        + """</table>
+<table class="doc-table">
+<tr><th>Para todas las edades</th><th></th></tr>"""
+        + _peligro_filas(_PELIGRO_TODAS)
+        + """</table>
+
+<h2>Factores de riesgo</h2>
+<table class="doc-grid">
+<tr><td class="k">¿Quién cuida al niño o niña?</td><td colspan="3">{{ campo.cred_cuidador }}</td></tr>
+<tr><td class="k">Participa el padre</td><td>{{ campo.cred_padre }}</td>
+    <td class="k">Recibe muestras de afecto</td><td>{{ campo.cred_afecto }}</td></tr>
+</table>
+<p>{{ campo.cred_riesgo_detalle|parrafos }}</p>
+
+<h2>Anamnesis</h2>
+<table class="doc-grid">
+<tr><td class="k">Motivo de consulta</td><td colspan="3">{{ campo.cred_motivo }}</td></tr>
+<tr><td class="k">Tiempo de enfermedad</td><td>{{ campo.cred_tiempo }} días</td>
+    <td class="k">Inicio y curso</td><td>{{ campo.cred_inicio }} · {{ campo.cred_curso }}</td></tr>
+</table>
+
+<h2>Examen físico</h2>
+<table class="doc-table">
+<tr><th>T°</th><th>PA</th><th>FC</th><th>FR</th><th>Peso</th><th>Talla</th><th>PC</th></tr>
+<tr><td>{{ campo.cred_temp }}</td><td>{{ campo.cred_pa }}</td><td>{{ campo.cred_fc }}</td>
+    <td>{{ campo.cred_fr }}</td><td>{{ campo.cred_peso }} kg</td><td>{{ campo.cred_talla }} cm</td>
+    <td>{{ campo.cred_pc }} cm</td></tr>
+</table>
+<p>{{ campo.cred_examen|parrafos }}</p>
+
+<h2>Diagnóstico</h2>
+<p><strong>1. Nosológico o sindrómico:</strong> {{ campo.cred_dx_nosologico|parrafos }}</p>
+<table class="doc-grid">
+<tr><td class="k">2. Crecimiento</td><td>{{ campo.cred_crecimiento }}</td>
+    <td class="k">Estado nutricional</td><td>{{ campo.cred_nutricional }}</td></tr>
+<tr><td class="k">P/E</td><td>{{ campo.cred_pe }}</td>
+    <td class="k">T/E</td><td>{{ campo.cred_te }}</td></tr>
+<tr><td class="k">P/T</td><td colspan="3">{{ campo.cred_pt }}</td></tr>
+<tr><td class="k">3. Desarrollo psicomotor</td><td colspan="3">{{ campo.cred_desarrollo }}</td></tr>
+<tr><td class="k">Observaciones</td><td colspan="3">{{ campo.cred_desarrollo_obs }}</td></tr>
+</table>
+<p><strong>4. Factores condicionales:</strong> {{ campo.cred_factores|parrafos }}</p>
+
+<h2>Tratamiento</h2>
+<p>{{ campo.cred_tratamiento|parrafos }}</p>
+
+<h2>Acuerdos y compromisos</h2>
+<p>{{ campo.cred_acuerdos|parrafos }}</p>
+
+<table class="doc-grid">
+<tr><td class="k">Exámenes auxiliares</td><td colspan="3">{{ campo.cred_examenes }}</td></tr>
+<tr><td class="k">Referencia</td><td>{{ campo.cred_referencia }}</td>
+    <td class="k">Próxima cita</td><td>{{ campo.cred_cita }}</td></tr>
+</table>"""
+        + SIGN_DOCTOR
+    ),
+}
+
+
+# --- Tamizaje de violencia y maltrato infantil ------------------------------
+
+# La hoja del MINSA lista los indicadores para que el profesional los marque
+# sobre el papel. Aquí se imprimen como referencia y se registra, por
+# categoría, si hay indicios y cuáles: el hallazgo es narrativo y anotarlo en
+# treinta y cuatro casillas sueltas haría la ficha impracticable.
+_VMI_CATEGORIAS = (
+    ("fisico", "Físicos", (
+        "Hematomas o contusiones inexplicables",
+        "Cicatrices y quemaduras",
+        "Fracturas inexplicables",
+        "Marcas de mordedura",
+        "Lesiones de perineo, vulva o recto",
+        "Laceraciones en boca, mejillas u ojos",
+        "Quejas crónicas sin causa física (cefalea, problemas de sueño)",
+        "Problemas con el apetito",
+        "Enuresis",
+    )),
+    ("conductual", "Conductuales", (
+        "Retraimiento",
+        "Llanto fuerte",
+        "Exagerada necesidad de ganar o sobresalir",
+        "Demanda excesiva de atención",
+        "Mucha agresividad o mucha pasividad frente a otros niños",
+        "Tartamudeo",
+        "Temor a los padres o de llegar al hogar",
+        "Robo, mentira, fuga, desobediencia, agresividad",
+        "Ausentismo escolar",
+        "Llegar temprano a la escuela o retirarse tarde",
+        "Bajo rendimiento académico",
+    )),
+    ("sexual", "Sexuales", (
+        "Conocimiento y conducta sexual inapropiados para la edad",
+        "Irritación, dolor, lesión o hemorragia en zona genital",
+        "Enfermedad de transmisión sexual",
+    )),
+    ("negligencia", "Negligencia", (
+        "Falta de peso o pobre patrón de crecimiento",
+        "Sin vacunas o sin atención de salud",
+        "Accidentes o enfermedades muy frecuentes",
+        "Descuido en higiene o aliño",
+        "Falta de estimulación del desarrollo",
+        "Fatiga, sueño o hambre",
+    )),
+    ("psicologico", "Psicológicos", (
+        "Extrema falta de confianza en sí mismo",
+        "Aislamiento de personas",
+        "Tristeza, depresión o angustia",
+        "Intento de suicidio",
+    )),
+)
+
+_VMI_REFERENCIA = "".join(
+    f"<tr><td class=\"k\">{titulo}</td><td>{'; '.join(indicadores)}</td></tr>"
+    for _, titulo, indicadores in _VMI_CATEGORIAS
+)
+
+TAMIZAJE_VIOLENCIA_INFANTIL = {
+    "code": "FIC-VMI",
+    "version": 1,
+    "family": FICHA,
+    "title": "Tamizaje de violencia y maltrato infantil",
+    "description": "Preguntas al cuidador e indicadores de maltrato observados en el niño o niña",
+    "study_type": None,
+    "requires_signature": True,
+    "fields": [
+        choice("vmi_adulto", "¿Algún miembro de su familia lo insulta, golpea, chantajea u obliga a tener relaciones sexuales?",
+               "Preguntas al adulto", SI_NO, "No"),
+        {"key": "vmi_quien", "label": "¿Quién?", "type": "text", "group": "Preguntas al adulto", "wide": True},
+        choice("vmi_desobediente", "¿Su hijo o hija es muy desobediente?",
+               "Preguntas al cuidador", SI_NO, "No"),
+        choice("vmi_control", "¿Alguna vez pierde el control y lo golpea?",
+               "Preguntas al cuidador", SI_NO, "No"),
+        *[
+            campo
+            for key, titulo, _ in _VMI_CATEGORIAS
+            for campo in (
+                choice(f"vmi_{key}", f"Indicadores {titulo.lower()}", "Indicadores observados",
+                       AUSENTE_PRESENTE, "Ausente"),
+                {"key": f"vmi_{key}_detalle", "label": f"¿Cuáles? · {titulo.lower()}",
+                 "type": "text", "group": "Indicadores observados", "wide": True},
+            )
+        ],
+        choice("vmi_resultado", "Resultado del tamizaje", "Conclusión",
+               opts("Negativo", "Positivo"), "Negativo"),
+        {"key": "vmi_conducta", "label": "Conducta adoptada y derivación", "type": "textarea", "group": "Conclusión", "required": True, "wide": True},
+    ],
+    "body": (
+        HEADER_CLINICAL
+        + """<p>Debido a que la violencia familiar es dañina para la salud de las personas, se
+pregunta en todas las oportunidades de contacto si existe esa situación, para participar
+con la familia en la solución de sus problemas.</p>
+
+<h2>Preguntas al adulto</h2>
+<table class="doc-grid">
+<tr><td class="k">¿Algún miembro de su familia lo insulta, golpea, chantajea u obliga a
+    tener relaciones sexuales?</td><td>{{ campo.vmi_adulto }}</td></tr>
+<tr><td class="k">¿Quién?</td><td>{{ campo.vmi_quien }}</td></tr>
+<tr><td class="k">¿Su hijo o hija es muy desobediente?</td><td>{{ campo.vmi_desobediente }}</td></tr>
+<tr><td class="k">¿Alguna vez pierde el control y lo golpea?</td><td>{{ campo.vmi_control }}</td></tr>
+</table>
+
+<h2>Indicadores observados</h2>
+<table class="doc-table">
+<tr><th>Categoría</th><th>Indicios</th><th>¿Cuáles?</th></tr>
+<tr><td>Físicos</td><td>{{ campo.vmi_fisico }}</td><td>{{ campo.vmi_fisico_detalle }}</td></tr>
+<tr><td>Conductuales</td><td>{{ campo.vmi_conductual }}</td><td>{{ campo.vmi_conductual_detalle }}</td></tr>
+<tr><td>Sexuales</td><td>{{ campo.vmi_sexual }}</td><td>{{ campo.vmi_sexual_detalle }}</td></tr>
+<tr><td>Negligencia</td><td>{{ campo.vmi_negligencia }}</td><td>{{ campo.vmi_negligencia_detalle }}</td></tr>
+<tr><td>Psicológicos</td><td>{{ campo.vmi_psicologico }}</td><td>{{ campo.vmi_psicologico_detalle }}</td></tr>
+</table>
+
+<h2>Conclusión</h2>
+<table class="doc-grid">
+<tr><td class="k">Resultado del tamizaje</td><td>{{ campo.vmi_resultado }}</td></tr>
+</table>
+<p>{{ campo.vmi_conducta|parrafos }}</p>
+
+<h2>Indicadores de referencia</h2>
+<table class="doc-grid">"""
+        + _VMI_REFERENCIA
+        + """</table>
+<p class="doc-note">Adaptado de las Normas y Procedimientos para la Atención de la
+Violencia Familiar y el Maltrato Infantil, MINSA.</p>"""
+        + SIGN_DOCTOR
     ),
 }
 
@@ -4237,12 +5156,21 @@ TEMPLATES: tuple[dict[str, Any], ...] = (
     INFORME_PSICOLOGICO,
     TAMIZAJE_SRQ,
     HISTORIA_CLINICA_GENERAL,
+    HISTORIA_CLINICA_GENERAL_V2,
     HISTORIA_RECIEN_NACIDO,
     FICHA_TERAPIA_FISICA,
     CONTROL_TERAPIA,
     EVOLUCION_HOSPITALIZACION,
     REPORTE_OPERATORIO,
     CUIDADOS_URPA,
+    HISTORIA_EMERGENCIA,
+    HISTORIA_GINECO_OBSTETRICA,
+    HISTORIA_GINECO_CONTINUADORA,
+    HISTORIA_ODONTOLOGICA,
+    HISTORIA_BOTOX,
+    HISTORIA_PLASMA,
+    ATENCION_INTEGRAL_NINO,
+    TAMIZAJE_VIOLENCIA_INFANTIL,
     CI_PROCEDIMIENTOS,
     CI_VIH,
     CI_HOSPITALIZACION,
@@ -4291,6 +5219,10 @@ def seed_document_templates(db: Session) -> None:
         for older in repo.versions_of(spec["code"]):
             older.is_active = False
         db.add(template)
+        # La sesión no hace autoflush, así que sin este flush una base recién
+        # creada insertaría de golpe dos versiones del mismo código y las dos
+        # quedarían activas: la plantilla saldría duplicada en el selector.
+        db.flush()
         created += 1
 
     if created:

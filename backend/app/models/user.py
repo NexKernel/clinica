@@ -15,6 +15,11 @@ class User(Base, TimestampMixin):
     full_name: Mapped[str] = mapped_column(String(160), nullable=False)
     role_id: Mapped[int] = mapped_column(ForeignKey("roles.id"), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # Cuenta técnica sembrada desde FIRST_ADMIN_*: su credencial vive en el
+    # entorno, así que no se lista ni se administra desde la aplicación.
+    is_system: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
 
     role_ref: Mapped[Role] = relationship(back_populates="users", lazy="joined")
 

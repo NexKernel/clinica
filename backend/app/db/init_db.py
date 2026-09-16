@@ -69,13 +69,14 @@ def _create_admin(db: Session, users: UserRepository) -> None:
             full_name=settings.FIRST_ADMIN_FULL_NAME,
             role_id=admin_role.id,
             is_active=True,
+            is_system=True,
         )
     )
     logger.info("Usuario administrador inicial creado: %s", settings.FIRST_ADMIN_USERNAME)
 
 
 def _sync_admin(users: UserRepository, admin: User) -> None:
-    """Realinea la cuenta inicial con las variables FIRST_ADMIN_*.
+    """Realinea la cuenta de soporte con las variables FIRST_ADMIN_*.
 
     Antes el sembrado salía en cuanto la cuenta existía, así que cambiar la
     contraseña en el entorno tras el primer despliegue no tenía ningún efecto:
@@ -120,6 +121,11 @@ def _sync_admin(users: UserRepository, admin: User) -> None:
     if not admin.is_active:
         admin.is_active = True
         changes.append("reactivación")
+
+    if not admin.is_system:
+        # Marca la cuenta creada antes de que existiera la bandera.
+        admin.is_system = True
+        changes.append("cuenta de soporte")
 
     if changes:
         users.save(admin)

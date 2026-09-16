@@ -49,7 +49,10 @@ class UserRepository:
         page: int = 1,
         page_size: int = 20,
     ) -> tuple[list[User], int]:
-        stmt = self._apply_filters(select(User).join(User.role_ref), term, role_code, is_active)
+        # is_system fuera: la cuenta de soporte se administra por entorno y no
+        # debe figurar en la gestión de usuarios de la clínica.
+        stmt = select(User).join(User.role_ref).where(User.is_system.is_(False))
+        stmt = self._apply_filters(stmt, term, role_code, is_active)
 
         total = self.db.execute(
             select(func.count()).select_from(stmt.order_by(None).subquery())
@@ -67,7 +70,11 @@ class UserRepository:
         stmt = (
             select(func.count(User.id))
             .join(User.role_ref)
-            .where(Role.code == role_code, User.is_active.is_(True))
+            .where(
+                Role.code == role_code,
+                User.is_active.is_(True),
+                User.is_system.is_(False),
+            )
         )
         if exclude_id is not None:
             stmt = stmt.where(User.id != exclude_id)

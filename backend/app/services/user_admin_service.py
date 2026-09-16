@@ -38,7 +38,9 @@ class UserAdminService:
 
     def get(self, user_id: int) -> User:
         user = self.users.get_by_id(user_id)
-        if user is None:
+        if user is None or user.is_system:
+            # La cuenta de soporte queda oculta también por id: no se edita, ni
+            # se desactiva, ni se le puede reiniciar la contraseña desde la app.
             raise NotFoundError("El usuario no existe")
         return user
 

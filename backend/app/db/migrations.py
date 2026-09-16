@@ -26,6 +26,9 @@ ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("products", "expiry_date", "DATE"),
     ("clinic_settings", "category", "VARCHAR(10)"),
     ("clinic_settings", "document_footer", "VARCHAR(255)"),
+    # Obligatoria, pero con DEFAULT: las cuentas ya creadas quedan en FALSE y
+    # solo el sembrado marca la de soporte.
+    ("users", "is_system", "BOOLEAN NOT NULL DEFAULT FALSE"),
 )
 
 

@@ -92,6 +92,7 @@ export {
 } from './inventory'
 export type {
   DocumentType,
+  MaritalStatus,
   Patient,
   PatientFilters,
   PatientPayload,
@@ -99,7 +100,7 @@ export type {
   PatientSummary,
   Sex,
 } from './patient'
-export { DOCUMENT_TYPE_LABELS, DOCUMENT_TYPES } from './patient'
+export { DOCUMENT_TYPE_LABELS, DOCUMENT_TYPES, MARITAL_STATUSES } from './patient'
 export type {
   Practitioner,
   PractitionerPayload,

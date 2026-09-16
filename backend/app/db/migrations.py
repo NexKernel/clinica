@@ -30,6 +30,11 @@ ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # Obligatoria, pero con DEFAULT: las cuentas ya creadas quedan en FALSE y
     # solo el sembrado marca la de soporte.
     ("users", "is_system", "BOOLEAN NOT NULL DEFAULT FALSE"),
+    # Filiación que pide la hoja de historia clínica en papel y que la ficha
+    # digital no recogía.
+    ("patients", "birth_place", "VARCHAR(120)"),
+    ("patients", "marital_status", "VARCHAR(20)"),
+    ("patients", "occupation", "VARCHAR(80)"),
 )
 
 

@@ -3,7 +3,7 @@ from datetime import date
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 from app.core.datetime import today
-from app.models.patient import DOCUMENT_CATALOG, DocumentType, Sex
+from app.models.patient import DOCUMENT_CATALOG, MARITAL_STATUSES, DocumentType, Sex
 from app.schemas.types import LocalDatetime
 
 DIGITS_ONLY = {DocumentType.DNI, DocumentType.RUC}
@@ -16,7 +16,10 @@ class PatientBase(BaseModel):
     last_name_paternal: str = Field(min_length=2, max_length=80)
     last_name_maternal: str | None = Field(default=None, max_length=80)
     birth_date: date | None = None
+    birth_place: str | None = Field(default=None, max_length=120)
     sex: Sex | None = None
+    marital_status: str | None = Field(default=None, max_length=20)
+    occupation: str | None = Field(default=None, max_length=80)
 
     phone: str | None = Field(default=None, max_length=40)
     whatsapp: str | None = Field(default=None, max_length=40)
@@ -52,6 +55,13 @@ class PatientBase(BaseModel):
     @classmethod
     def _titleize(cls, value: str | None) -> str | None:
         return value.upper() if value else value
+
+    @field_validator("marital_status")
+    @classmethod
+    def _check_marital_status(cls, value: str | None) -> str | None:
+        if value and value not in MARITAL_STATUSES:
+            raise ValueError("Estado civil no reconocido")
+        return value
 
     @field_validator("birth_date")
     @classmethod

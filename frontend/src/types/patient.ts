@@ -11,6 +11,16 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
 
 export type Sex = 'M' | 'F'
 
+/** Estados civiles que acepta el backend (app/models/patient.py). */
+export const MARITAL_STATUSES = [
+  'Soltero(a)',
+  'Casado(a)',
+  'Conviviente',
+  'Divorciado(a)',
+  'Viudo(a)',
+] as const
+export type MaritalStatus = (typeof MARITAL_STATUSES)[number]
+
 export interface PatientPayload {
   document_type: DocumentType
   document_number: string | null
@@ -18,7 +28,10 @@ export interface PatientPayload {
   last_name_paternal: string
   last_name_maternal: string | null
   birth_date: string | null
+  birth_place: string | null
   sex: Sex | null
+  marital_status: string | null
+  occupation: string | null
   phone: string | null
   whatsapp: string | null
   email: string | null

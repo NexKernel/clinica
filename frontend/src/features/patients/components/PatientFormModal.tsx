@@ -16,7 +16,13 @@ import {
 } from '@/components/ui'
 import { usePatientActions } from '@/features/patients/hooks/usePatients'
 import { getErrorMessage } from '@/services/http'
-import { DOCUMENT_TYPE_LABELS, DOCUMENT_TYPES, type Patient, type PatientPayload } from '@/types'
+import {
+  DOCUMENT_TYPE_LABELS,
+  DOCUMENT_TYPES,
+  MARITAL_STATUSES,
+  type Patient,
+  type PatientPayload,
+} from '@/types'
 
 type FieldErrors = Partial<Record<keyof PatientPayload, string>>
 
@@ -34,6 +40,8 @@ const BLOOD_OPTIONS: SelectOption[] = ['O+', 'O-', 'A+', 'A-', 'B+', 'B-', 'AB+'
   (value) => ({ value, label: value }),
 )
 
+const MARITAL_OPTIONS: SelectOption[] = MARITAL_STATUSES.map((value) => ({ value, label: value }))
+
 /** Longitud exacta esperada por tipo de documento (igual que en el backend). */
 const DOCUMENT_LENGTH: Partial<Record<string, number>> = { DNI: 8, RUC: 11 }
 
@@ -50,7 +58,10 @@ const emptyValues = (): PatientPayload => ({
   last_name_paternal: '',
   last_name_maternal: '',
   birth_date: '',
+  birth_place: '',
   sex: null,
+  marital_status: '',
+  occupation: '',
   phone: '',
   whatsapp: '',
   email: '',
@@ -109,6 +120,9 @@ function toPayload(values: PatientPayload): PatientPayload {
     last_name_paternal: values.last_name_paternal.trim(),
     last_name_maternal: clean(values.last_name_maternal),
     birth_date: clean(values.birth_date),
+    birth_place: clean(values.birth_place),
+    marital_status: clean(values.marital_status),
+    occupation: clean(values.occupation),
     phone: clean(values.phone),
     whatsapp: clean(values.whatsapp),
     email: clean(values.email),
@@ -135,6 +149,9 @@ const fromPatient = (patient: Patient): PatientPayload => ({
   document_number: patient.document_number ?? '',
   last_name_maternal: patient.last_name_maternal ?? '',
   birth_date: patient.birth_date ?? '',
+  birth_place: patient.birth_place ?? '',
+  marital_status: patient.marital_status ?? '',
+  occupation: patient.occupation ?? '',
   phone: patient.phone ?? '',
   whatsapp: patient.whatsapp ?? '',
   email: patient.email ?? '',
@@ -315,6 +332,31 @@ export function PatientFormModal({ open, patient, onClose, onSaved }: PatientFor
                 value={values.blood_type ?? ''}
                 disabled={isLoading}
                 onChange={handleChange('blood_type')}
+              />
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-3">
+              <Input
+                label="Lugar de nacimiento"
+                placeholder="Satipo, Junín"
+                value={values.birth_place ?? ''}
+                disabled={isLoading}
+                onChange={handleChange('birth_place')}
+              />
+              <Select
+                label="Estado civil"
+                options={MARITAL_OPTIONS}
+                placeholder="Sin registrar"
+                value={values.marital_status ?? ''}
+                disabled={isLoading}
+                onChange={handleChange('marital_status')}
+              />
+              <Input
+                label="Ocupación"
+                placeholder="Agricultor"
+                value={values.occupation ?? ''}
+                disabled={isLoading}
+                onChange={handleChange('occupation')}
               />
             </div>
 

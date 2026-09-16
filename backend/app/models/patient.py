@@ -36,6 +36,16 @@ SEX_LABELS: dict[str, str] = {
     Sex.FEMENINO.value: "Femenino",
 }
 
+# Estados civiles que admite la hoja de filiación. Se guarda la etiqueta misma,
+# así que la lista solo sirve para ofrecerlos y para rechazar un valor inventado.
+MARITAL_STATUSES: tuple[str, ...] = (
+    "Soltero(a)",
+    "Casado(a)",
+    "Conviviente",
+    "Divorciado(a)",
+    "Viudo(a)",
+)
+
 
 def new_public_id() -> str:
     """UUID4 en hexadecimal, sin guiones, para las rutas del frontend."""
@@ -67,7 +77,12 @@ class Patient(Base, TimestampMixin):
     last_name_paternal: Mapped[str] = mapped_column(String(80), nullable=False)
     last_name_maternal: Mapped[str | None] = mapped_column(String(80))
     birth_date: Mapped[date | None] = mapped_column(Date)
+    birth_place: Mapped[str | None] = mapped_column(String(120))
     sex: Mapped[str | None] = mapped_column(String(1))
+    # Estado civil y ocupación se guardan ya legibles, como el grupo sanguíneo:
+    # la hoja de filiación los imprime tal cual y no hay nada que traducir.
+    marital_status: Mapped[str | None] = mapped_column(String(20))
+    occupation: Mapped[str | None] = mapped_column(String(80))
 
     # Contacto
     phone: Mapped[str | None] = mapped_column(String(40))

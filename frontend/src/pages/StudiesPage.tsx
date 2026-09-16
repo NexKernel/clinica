@@ -24,6 +24,7 @@ import { StudyFormModal } from '@/features/studies/components/StudyFormModal'
 import { StudyResultModal } from '@/features/studies/components/StudyResultModal'
 import { useStudiesList } from '@/features/studies/hooks/useStudies'
 import { formatDate } from '@/lib/datetime'
+import { useModuleAccess } from '@/hooks/useModuleAccess'
 import { getErrorMessage } from '@/services/http'
 import {
   STUDY_STATUS_LABELS,
@@ -56,6 +57,9 @@ const STATUS_OPTIONS: SelectOption[] = STUDY_STATUSES.map((status) => ({
 }))
 
 export function StudiesPage() {
+  // Quien solo consulta la historia no debe ver acciones que la API rechaza.
+  const { canManage } = useModuleAccess()
+  const canWrite = canManage('STUDIES')
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
@@ -180,15 +184,17 @@ export function StudiesPage() {
         >
           {({ close }) => (
             <>
-              <DropdownItem
-                icon={<FileCheck2 className="h-4 w-4" />}
-                onClick={() => {
-                  close()
-                  setResultId(row.id)
-                }}
-              >
-                Registrar resultado
-              </DropdownItem>
+              {canWrite && (
+                <DropdownItem
+                  icon={<FileCheck2 className="h-4 w-4" />}
+                  onClick={() => {
+                    close()
+                    setResultId(row.id)
+                  }}
+                >
+                  Registrar resultado
+                </DropdownItem>
+              )}
               <DropdownItem
                 icon={<Pencil className="h-4 w-4" />}
                 onClick={() => {
@@ -196,7 +202,7 @@ export function StudiesPage() {
                   void openEdit(row)
                 }}
               >
-                Editar solicitud
+                {canWrite ? 'Editar solicitud' : 'Ver solicitud'}
               </DropdownItem>
             </>
           )}
@@ -215,9 +221,11 @@ export function StudiesPage() {
         title="Resultados y Rayos X"
         subtitle="Solicitudes, informes, archivos y envío al paciente"
         actions={
-          <Button size="sm" leftIcon={<Plus className="h-4 w-4" />} onClick={openCreate}>
-            Nueva solicitud
-          </Button>
+          canWrite ? (
+            <Button size="sm" leftIcon={<Plus className="h-4 w-4" />} onClick={openCreate}>
+              Nueva solicitud
+            </Button>
+          ) : null
         }
       />
 
@@ -269,7 +277,7 @@ export function StudiesPage() {
                   : 'Registre la primera solicitud de laboratorio o Rayos X.'
               }
               action={
-                !hasFilters ? (
+                !hasFilters && canWrite ? (
                   <Button size="sm" leftIcon={<Plus className="h-4 w-4" />} onClick={openCreate}>
                     Nueva solicitud
                   </Button>

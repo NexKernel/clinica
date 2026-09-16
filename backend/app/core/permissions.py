@@ -90,20 +90,20 @@ PERMISSION_MATRIX: dict[ModuleCode, ModulePermission] = {
             view=(REC, MED, ENF, CAJ, LAB, OPT),
             manage=(REC, MED, ENF),
         ),
-        # Solo escribe la historia quien atiende: el administrador la consulta
-        # para auditar, pero no la edita.
+        # La historia clínica la lleva todo el personal asistencial de la clínica;
+        # el administrador la consulta para auditar, pero no la escribe.
         _module(
             ModuleCode.ENCOUNTERS,
             "Atenciones médicas",
-            view=(MED, ENF, OPT),
-            manage=(MED, ENF, OPT),
+            view=(MED, ENF, LAB, OPT),
+            manage=(MED, ENF, LAB, OPT),
             admin_manages=False,
         ),
         _module(
             ModuleCode.MEDICAL_RECORDS,
             "Historias clínicas",
-            view=(MED, ENF, OPT),
-            manage=(MED,),
+            view=(MED, ENF, LAB, OPT),
+            manage=(MED, ENF, LAB, OPT),
             admin_manages=False,
         ),
         _module(
@@ -111,14 +111,17 @@ PERMISSION_MATRIX: dict[ModuleCode, ModulePermission] = {
             "Resultados y Rayos X",
             view=(REC, MED, ENF, LAB, OPT),
             manage=(MED, ENF, LAB, OPT),
+            admin_manages=False,
         ),
         # Recepción emite y hace firmar los consentimientos y declaraciones;
-        # los informes y fichas los llena el personal asistencial.
+        # los informes y fichas los llena el personal asistencial. Todos ellos
+        # forman parte de la historia, así que el administrador tampoco escribe.
         _module(
             ModuleCode.DOCUMENTS,
             "Documentos y formatos",
             view=(REC, MED, ENF, LAB, OPT),
             manage=(REC, MED, ENF, LAB, OPT),
+            admin_manages=False,
         ),
         _module(
             ModuleCode.REMINDERS,

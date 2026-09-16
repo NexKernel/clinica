@@ -24,6 +24,7 @@ import { DocumentEditorModal } from '@/features/documents/components/DocumentEdi
 import { DocumentSheetModal } from '@/features/documents/components/DocumentSheetModal'
 import { TemplatePickerModal } from '@/features/documents/components/TemplatePickerModal'
 import { useDocumentActions, useDocumentsList } from '@/features/documents/hooks/useDocuments'
+import { useModuleAccess } from '@/hooks/useModuleAccess'
 import { formatDate } from '@/lib/datetime'
 import { getErrorMessage } from '@/services/http'
 import {
@@ -55,6 +56,9 @@ const STATUS_OPTIONS: SelectOption[] = DOCUMENT_STATUSES.map((status) => ({
 }))
 
 export function DocumentsPage() {
+  // Quien solo consulta la historia no debe ver acciones que la API rechaza.
+  const { canManage } = useModuleAccess()
+  const canWrite = canManage('DOCUMENTS')
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
   const [familyFilter, setFamilyFilter] = useState('')
@@ -180,7 +184,7 @@ export function DocumentsPage() {
                   setEditingId(row.id)
                 }}
               >
-                {row.status === 'BORRADOR' ? 'Continuar borrador' : 'Ver documento'}
+                {canWrite && row.status === 'BORRADOR' ? 'Continuar borrador' : 'Ver documento'}
               </DropdownItem>
               <DropdownItem
                 icon={<Printer className="h-4 w-4" />}
@@ -191,7 +195,7 @@ export function DocumentsPage() {
               >
                 Imprimir
               </DropdownItem>
-              {row.status !== 'ANULADO' && (
+              {canWrite && row.status !== 'ANULADO' && (
                 <DropdownItem
                   icon={<Ban className="h-4 w-4" />}
                   onClick={() => {
@@ -203,7 +207,7 @@ export function DocumentsPage() {
                   Anular
                 </DropdownItem>
               )}
-              {row.status === 'BORRADOR' && (
+              {canWrite && row.status === 'BORRADOR' && (
                 <DropdownItem
                   icon={<Trash2 className="h-4 w-4" />}
                   onClick={() => {
@@ -237,9 +241,11 @@ export function DocumentsPage() {
         title="Documentos"
         subtitle="Informes, fichas, consentimientos y actas listos para imprimir"
         actions={
-          <Button size="sm" leftIcon={<Plus className="h-4 w-4" />} onClick={openPicker}>
-            Nuevo documento
-          </Button>
+          canWrite ? (
+            <Button size="sm" leftIcon={<Plus className="h-4 w-4" />} onClick={openPicker}>
+              Nuevo documento
+            </Button>
+          ) : null
         }
       />
 
@@ -291,7 +297,7 @@ export function DocumentsPage() {
                   : 'Elija un formato del catálogo y emita el primer documento.'
               }
               action={
-                !hasFilters ? (
+                !hasFilters && canWrite ? (
                   <Button size="sm" leftIcon={<Plus className="h-4 w-4" />} onClick={openPicker}>
                     Nuevo documento
                   </Button>

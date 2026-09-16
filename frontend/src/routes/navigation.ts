@@ -72,7 +72,7 @@ export const NAV_ITEMS: NavItem[] = [
     path: ROUTES.consultations,
     icon: Stethoscope,
     primary: true,
-    roles: ['ADMIN', 'MEDICO', 'ENFERMERIA', 'OPTOMETRIA'],
+    roles: ['ADMIN', 'MEDICO', 'ENFERMERIA', 'LABORATORIO', 'OPTOMETRIA'],
   },
   {
     key: 'medical-records',
@@ -80,7 +80,7 @@ export const NAV_ITEMS: NavItem[] = [
     description: 'Historia clínica consolidada',
     path: ROUTES.medicalRecords,
     icon: ClipboardList,
-    roles: ['ADMIN', 'MEDICO', 'ENFERMERIA', 'OPTOMETRIA'],
+    roles: ['ADMIN', 'MEDICO', 'ENFERMERIA', 'LABORATORIO', 'OPTOMETRIA'],
   },
   {
     key: 'studies',

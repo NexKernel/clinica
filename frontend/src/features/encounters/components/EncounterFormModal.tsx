@@ -19,7 +19,7 @@ import { useEncounterActions } from '@/features/encounters/hooks/useEncounters'
 import { inventoryApi } from '@/features/inventory/api/inventory.api'
 import { ProductPicker } from '@/features/inventory/components/ProductPicker'
 import { PatientPicker } from '@/features/patients/components/PatientPicker'
-import { useOwnPractitionerId } from '@/hooks/useOwnPractitioner'
+import { useOwnPractitioner } from '@/hooks/useOwnPractitioner'
 import { getErrorMessage } from '@/services/http'
 import {
   DIAGNOSIS_KIND_LABELS,
@@ -143,6 +143,10 @@ const toSummary = (product: Product): ProductSummary => ({
   expires_soon: product.expires_soon,
 })
 
+/** Cómo se nombra a un profesional, se elija o venga dado por la sesión. */
+const practitionerLabel = (item: { full_name: string; specialty_name: string | null }): string =>
+  item.specialty_name ? `${item.full_name} — ${item.specialty_name}` : item.full_name
+
 const numberOrNull = (value: string): number | null => {
   const parsed = Number(value)
   return value.trim() === '' || Number.isNaN(parsed) ? null : parsed
@@ -180,7 +184,10 @@ export function EncounterFormModal({
   const isClosed = encounter !== null && !encounter.is_editable
   const isReadOnly = !canWrite || isClosed
   const { practitioners } = useActivePractitioners()
-  const ownPractitionerId = useOwnPractitionerId(practitioners)
+  // La historia la firma quien atiende: si la sesión tiene ficha propia, el
+  // profesional no se elige, es quien está dentro.
+  const ownPractitioner = useOwnPractitioner(practitioners)
+  const ownPractitionerId = ownPractitioner?.id ?? null
   const { create, update } = useEncounterActions()
   const isLoading = create.isPending || update.isPending
   const locked = isLoading || isReadOnly
@@ -405,7 +412,7 @@ export function EncounterFormModal({
 
   const practitionerOptions: SelectOption[] = practitioners.map((item) => ({
     value: String(item.id),
-    label: item.specialty_name ? `${item.full_name} — ${item.specialty_name}` : item.full_name,
+    label: practitionerLabel(item),
   }))
 
   return (
@@ -452,26 +459,40 @@ export function EncounterFormModal({
 
         {!isEdit && (
           <>
-            <PatientPicker value={patient} onChange={setPatient} disabled={locked} />
-            {practitionerOptions.length === 0 && (
+            <PatientPicker
+              value={patient}
+              onChange={setPatient}
+              disabled={locked || appointmentId !== null}
+            />
+            {!ownPractitioner && practitionerOptions.length === 0 && (
               <Alert variant="warning">
                 No hay ningún profesional dado de alta, así que la atención no se puede
                 firmar. Un administrador debe registrarlo desde Usuarios y perfiles.
               </Alert>
             )}
             <div className="grid gap-4 sm:grid-cols-2">
-              <Select
-                label="Profesional"
-                options={practitionerOptions}
-                placeholder={
-                  practitionerOptions.length === 0
-                    ? 'No hay profesionales registrados'
-                    : 'Seleccione el profesional'
-                }
-                value={practitionerId}
-                disabled={locked || practitionerOptions.length === 0}
-                onChange={(event) => setPractitionerId(event.target.value)}
-              />
+              {ownPractitioner ? (
+                <Input
+                  label="Profesional"
+                  value={practitionerLabel(ownPractitioner)}
+                  hint="Firma la atención con su ficha"
+                  readOnly
+                  disabled
+                />
+              ) : (
+                <Select
+                  label="Profesional"
+                  options={practitionerOptions}
+                  placeholder={
+                    practitionerOptions.length === 0
+                      ? 'No hay profesionales registrados'
+                      : 'Seleccione el profesional'
+                  }
+                  value={practitionerId}
+                  disabled={locked || practitionerOptions.length === 0}
+                  onChange={(event) => setPractitionerId(event.target.value)}
+                />
+              )}
               <ServicePicker
                 label="Servicio"
                 placeholder="Busque el servicio (opcional)"

@@ -31,6 +31,7 @@ import {
 } from '@/components/ui'
 import { useActivePractitioners } from '@/features/catalog/hooks/useCatalog'
 import { EncounterFormModal } from '@/features/encounters/components/EncounterFormModal'
+import { PractitionerAgendaCard } from '@/features/encounters/components/PractitionerAgendaCard'
 import { encountersApi } from '@/features/encounters/api/encounters.api'
 import {
   useEncounterActions,
@@ -38,9 +39,17 @@ import {
 } from '@/features/encounters/hooks/useEncounters'
 import { useReminderActions } from '@/features/reminders/hooks/useReminders'
 import { useModuleAccess } from '@/hooks/useModuleAccess'
+import { useOwnPractitioner } from '@/hooks/useOwnPractitioner'
 import { formatDateTime, toDateInput } from '@/lib/datetime'
+import { cn } from '@/lib/utils'
 import { getErrorMessage } from '@/services/http'
-import type { Encounter, EncounterFilters, EncounterListItem, EncounterStatus } from '@/types'
+import type {
+  Appointment,
+  Encounter,
+  EncounterFilters,
+  EncounterListItem,
+  EncounterStatus,
+} from '@/types'
 
 const PAGE_SIZE = 10
 
@@ -66,6 +75,9 @@ export function ConsultationsPage() {
 
   const [formOpen, setFormOpen] = useState(false)
   const [selected, setSelected] = useState<Encounter | null>(null)
+  // Cita desde la que se abre la atención: fija el paciente y deja la cita
+  // enlazada, de modo que al finalizar quede como atendida.
+  const [fromAppointment, setFromAppointment] = useState<Appointment | null>(null)
   const [cancelTarget, setCancelTarget] = useState<EncounterListItem | null>(null)
   const [feedback, setFeedback] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null)
 
@@ -74,6 +86,12 @@ export function ConsultationsPage() {
   const { canManage } = useModuleAccess()
   const canWrite = canManage('ENCOUNTERS')
   const { practitioners } = useActivePractitioners()
+  /* Quien atiende trabaja sobre lo suyo: con ficha propia, el módulo muestra
+     su agenda y sus atenciones, y el profesional deja de ser algo que elegir.
+     El selector sigue ahí para los perfiles que consultan la historia sin
+     firmarla —administración— y necesitan mirar la de cualquier profesional. */
+  const ownPractitioner = useOwnPractitioner(practitioners)
+  const ownPractitionerId = ownPractitioner?.id ?? null
   const { finish, cancel } = useEncounterActions()
   const { fromEncounter } = useReminderActions()
 
@@ -91,16 +109,29 @@ export function ConsultationsPage() {
       page_size: PAGE_SIZE,
       ...(search ? { search } : {}),
       ...(statusFilter ? { status: statusFilter } : {}),
-      ...(practitionerFilter ? { practitioner_id: Number(practitionerFilter) } : {}),
+      ...(ownPractitionerId
+        ? { practitioner_id: ownPractitionerId }
+        : practitionerFilter
+          ? { practitioner_id: Number(practitionerFilter) }
+          : {}),
       ...(day ? { day } : {}),
     }),
-    [page, search, statusFilter, practitionerFilter, day],
+    [page, search, statusFilter, practitionerFilter, ownPractitionerId, day],
   )
 
   const { data, isLoading, isFetching, error } = useEncountersList(filters)
 
   const openCreate = () => {
     setSelected(null)
+    setFromAppointment(null)
+    setFeedback(null)
+    setFormOpen(true)
+  }
+
+  /** Abre la atención de una cita, con el paciente y la cita ya puestos. */
+  const openFromAppointment = (appointment: Appointment) => {
+    setSelected(null)
+    setFromAppointment(appointment)
     setFeedback(null)
     setFormOpen(true)
   }
@@ -109,6 +140,7 @@ export function ConsultationsPage() {
     setFeedback(null)
     try {
       setSelected(await encountersApi.get(row.id))
+      setFromAppointment(null)
       setFormOpen(true)
     } catch (err) {
       setFeedback({ tone: 'danger', text: getErrorMessage(err, 'No se pudo abrir la atención') })
@@ -182,17 +214,23 @@ export function ConsultationsPage() {
         </div>
       ),
     },
-    {
-      key: 'practitioner',
-      header: 'Profesional',
-      className: 'text-muted',
-      render: (row) => (
-        <div className="min-w-0">
-          <p className="truncate text-foreground">{row.practitioner_name}</p>
-          <p className="truncate text-xs">{row.specialty_name ?? '—'}</p>
-        </div>
-      ),
-    },
+    // Con la lista ceñida a la ficha propia, la columna repetiría el mismo
+    // nombre en todas las filas.
+    ...(ownPractitioner
+      ? []
+      : [
+          {
+            key: 'practitioner',
+            header: 'Profesional',
+            className: 'text-muted',
+            render: (row: EncounterListItem) => (
+              <div className="min-w-0">
+                <p className="truncate text-foreground">{row.practitioner_name}</p>
+                <p className="truncate text-xs">{row.specialty_name ?? '—'}</p>
+              </div>
+            ),
+          },
+        ]),
     {
       key: 'diagnosis',
       header: 'Diagnóstico',
@@ -285,7 +323,11 @@ export function ConsultationsPage() {
       <PageHeader
         eyebrow="Atención"
         title="Atenciones médicas"
-        subtitle="Consultas, diagnósticos, indicaciones y recetas"
+        subtitle={
+          ownPractitioner
+            ? `Sus citas y atenciones · ${ownPractitioner.full_name}`
+            : 'Consultas, diagnósticos, indicaciones y recetas'
+        }
         actions={
           canWrite ? (
             <Button size="sm" leftIcon={<Stethoscope className="h-4 w-4" />} onClick={openCreate}>
@@ -298,8 +340,22 @@ export function ConsultationsPage() {
       {feedback && <Alert variant={feedback.tone}>{feedback.text}</Alert>}
       {error && <Alert variant="danger">{error}</Alert>}
 
+      {ownPractitionerId !== null && (
+        <PractitionerAgendaCard
+          practitionerId={ownPractitionerId}
+          day={day}
+          canWrite={canWrite}
+          onStart={openFromAppointment}
+        />
+      )}
+
       <Card>
-        <CardBody className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <CardBody
+          className={cn(
+            'grid gap-3 sm:grid-cols-2',
+            ownPractitioner ? 'lg:grid-cols-3' : 'lg:grid-cols-4',
+          )}
+        >
           <Input
             placeholder="Buscar por paciente o documento"
             icon={<Search className="h-[18px] w-[18px]" />}
@@ -314,15 +370,17 @@ export function ConsultationsPage() {
               setPage(1)
             }}
           />
-          <Select
-            options={practitionerOptions}
-            placeholder="Todos los profesionales"
-            value={practitionerFilter}
-            onChange={(event) => {
-              setPractitionerFilter(event.target.value)
-              setPage(1)
-            }}
-          />
+          {!ownPractitioner && (
+            <Select
+              options={practitionerOptions}
+              placeholder="Todos los profesionales"
+              value={practitionerFilter}
+              onChange={(event) => {
+                setPractitionerFilter(event.target.value)
+                setPage(1)
+              }}
+            />
+          )}
           <Select
             options={STATUS_OPTIONS}
             placeholder="Todos los estados"
@@ -343,11 +401,17 @@ export function ConsultationsPage() {
           emptyState={
             <EmptyState
               icon={FileText}
-              title="Sin atenciones en esta fecha"
+              title={
+                ownPractitioner
+                  ? 'No ha registrado atenciones en esta fecha'
+                  : 'Sin atenciones en esta fecha'
+              }
               description={
-                canWrite
-                  ? 'Inicie una atención desde la agenda del día o registre una nueva.'
-                  : 'No hay atenciones registradas en esta fecha.'
+                !canWrite
+                  ? 'No hay atenciones registradas en esta fecha.'
+                  : ownPractitioner
+                    ? 'Inicie una atención desde sus citas del día o registre una nueva.'
+                    : 'Inicie una atención desde la agenda del día o registre una nueva.'
               }
               action={
                 canWrite ? (
@@ -376,6 +440,9 @@ export function ConsultationsPage() {
       <EncounterFormModal
         open={formOpen}
         encounter={selected}
+        appointmentId={fromAppointment?.id ?? null}
+        initialPatient={fromAppointment?.patient ?? null}
+        initialPractitionerId={fromAppointment?.practitioner_id ?? ownPractitionerId}
         onClose={() => setFormOpen(false)}
       />
 

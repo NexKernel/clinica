@@ -18,6 +18,7 @@ import {
 import { ServicePicker } from '@/features/catalog/components/ServicePicker'
 import { useActivePractitioners, useActiveServices } from '@/features/catalog/hooks/useCatalog'
 import { PatientPicker } from '@/features/patients/components/PatientPicker'
+import { useOwnPractitionerId } from '@/hooks/useOwnPractitioner'
 import { formatTime, fromDateTimeInput, toDateInput, toDateTimeInput } from '@/lib/datetime'
 import { cn } from '@/lib/utils'
 import { getErrorMessage } from '@/services/http'
@@ -49,6 +50,7 @@ export function AppointmentFormModal({
 }: AppointmentFormModalProps) {
   const isEdit = appointment !== null
   const { practitioners } = useActivePractitioners()
+  const ownPractitionerId = useOwnPractitionerId(practitioners)
   const { services } = useActiveServices()
   const { create, update } = useAppointmentActions()
   const isLoading = create.isPending || update.isPending
@@ -92,6 +94,16 @@ export function AppointmentFormModal({
     setReason('')
     setNotes('')
   }, [open, appointment, initialPatient, initialDay, initialTime])
+
+  /* Ver la nota de EncounterFormModal: el relleno de la ficha propia va en un
+     efecto aparte del que reinicia el formulario, y solo sobre un campo vacío.
+     Aquí el profesional sigue eligiéndose —recepción programa para toda la
+     clínica, y un médico puede citar con un colega—, pero quien atiende ya no
+     tiene que buscarse a sí mismo para programar su propia agenda. */
+  useEffect(() => {
+    if (!open || appointment || !ownPractitionerId) return
+    setPractitionerId((actual) => actual || String(ownPractitionerId))
+  }, [open, appointment, ownPractitionerId])
 
   const practitionerOptions: SelectOption[] = useMemo(
     () =>

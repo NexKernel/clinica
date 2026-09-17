@@ -34,7 +34,7 @@ import {
 } from '@/types'
 
 const TABS: TabItem[] = [
-  { key: 'clinical', label: 'Anamnesis', icon: Stethoscope },
+  { key: 'clinical', label: 'Consulta', icon: Stethoscope },
   { key: 'vitals', label: 'Signos vitales', icon: Activity },
   { key: 'diagnoses', label: 'Diagnósticos', icon: ClipboardList },
   { key: 'prescriptions', label: 'Recetas', icon: Pill },

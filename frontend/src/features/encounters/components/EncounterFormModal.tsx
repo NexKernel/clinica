@@ -409,13 +409,23 @@ export function EncounterFormModal({
         {!isEdit && (
           <>
             <PatientPicker value={patient} onChange={setPatient} disabled={locked} />
+            {practitionerOptions.length === 0 && (
+              <Alert variant="warning">
+                No hay ningún profesional dado de alta, así que la atención no se puede
+                firmar. Un administrador debe registrarlo desde Usuarios y perfiles.
+              </Alert>
+            )}
             <div className="grid gap-4 sm:grid-cols-2">
               <Select
                 label="Profesional"
                 options={practitionerOptions}
-                placeholder="Seleccione el profesional"
+                placeholder={
+                  practitionerOptions.length === 0
+                    ? 'No hay profesionales registrados'
+                    : 'Seleccione el profesional'
+                }
                 value={practitionerId}
-                disabled={locked}
+                disabled={locked || practitionerOptions.length === 0}
                 onChange={(event) => setPractitionerId(event.target.value)}
               />
               <ServicePicker

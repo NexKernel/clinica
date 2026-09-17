@@ -13,9 +13,12 @@ import {
   Pencil,
   ShieldAlert,
   Stethoscope,
+  Syringe,
   UserX,
 } from 'lucide-react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+
+import { CredCardPanel } from '@/features/cred/components/CredCardPanel'
 
 import {
   Alert,
@@ -72,6 +75,14 @@ const SECTIONS: Section[] = [
     roles: rolesForNavItem('medical-records'),
   },
   { key: 'resultados', label: 'Resultados', icon: FlaskConical, roles: rolesForNavItem('studies') },
+  /* El carné lo lleva enfermería junto al médico; recepción lo consulta para
+     citar la siguiente vacuna, y el administrador para auditar. */
+  {
+    key: 'cred',
+    label: 'Carné CRED',
+    icon: Syringe,
+    roles: ['ADMIN', 'MEDICO', 'ENFERMERIA', 'RECEPCION'],
+  },
   {
     key: 'documentos',
     label: 'Documentos',
@@ -402,6 +413,18 @@ export function PatientDetailPage() {
               <CardHeader title="Resultados" description="Exámenes y estudios de imagen" />
               <CardBody>
                 <PatientStudiesPanel studies={studies} isLoading={loadingStudies} />
+              </CardBody>
+            </Card>
+          )}
+
+          {section === 'cred' && (
+            <Card>
+              <CardHeader
+                title="Carné de atención integral"
+                description="Inmunizaciones, controles de crecimiento, tamizajes y prestaciones"
+              />
+              <CardBody>
+                <CredCardPanel patientId={loads('cred')} />
               </CardBody>
             </Card>
           )}

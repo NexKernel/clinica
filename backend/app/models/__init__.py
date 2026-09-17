@@ -5,6 +5,7 @@ from app.models.appointment import (
     AppointmentStatus,
 )
 from app.models.catalog import MedicalService, ServiceKind, Specialty
+from app.models.cred import CredEntry
 from app.models.document import (
     DOCUMENT_FAMILY_LABELS,
     DOCUMENT_STATUS_LABELS,
@@ -92,6 +93,7 @@ __all__ = [
     "ReminderChannel",
     "ReminderKind",
     "ReminderStatus",
+    "CredEntry",
     "Role",
     "RoleCode",
     "Sale",

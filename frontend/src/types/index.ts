@@ -91,6 +91,18 @@ export {
   REASONS_BY_TYPE,
 } from './inventory'
 export type {
+  CredCard,
+  CredCatalogItem,
+  CredEntry,
+  CredEntryCreatePayload,
+  CredEntryPayload,
+  CredKind,
+  CredSection,
+  CredSheet,
+  CredSlot,
+  CredStatus,
+} from './cred'
+export type {
   DocumentType,
   MaritalStatus,
   Patient,

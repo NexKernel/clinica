@@ -24,6 +24,7 @@ class ModuleCode(StrEnum):
     APPOINTMENTS = "APPOINTMENTS"
     ENCOUNTERS = "ENCOUNTERS"
     MEDICAL_RECORDS = "MEDICAL_RECORDS"
+    CRED = "CRED"
     STUDIES = "STUDIES"
     DOCUMENTS = "DOCUMENTS"
     REMINDERS = "REMINDERS"
@@ -104,6 +105,16 @@ PERMISSION_MATRIX: dict[ModuleCode, ModulePermission] = {
             "Historias clínicas",
             view=(MED, ENF, LAB, OPT),
             manage=(MED, ENF, LAB, OPT),
+            admin_manages=False,
+        ),
+        # El carné de la niña y el niño lo lleva sobre todo enfermería, que es
+        # quien vacuna y controla el crecimiento; forma parte de la historia,
+        # así que el administrador lo consulta sin escribirlo.
+        _module(
+            ModuleCode.CRED,
+            "Carné de atención integral del niño",
+            view=(REC, MED, ENF),
+            manage=(MED, ENF),
             admin_manages=False,
         ),
         _module(

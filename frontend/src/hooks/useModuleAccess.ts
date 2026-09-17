@@ -13,6 +13,7 @@ export type ModuleCode =
   | 'APPOINTMENTS'
   | 'ENCOUNTERS'
   | 'MEDICAL_RECORDS'
+  | 'CRED'
   | 'STUDIES'
   | 'DOCUMENTS'
   | 'REMINDERS'

@@ -6,6 +6,7 @@ from app.api.v1.auth.routes import router as auth_router
 from app.api.v1.catalog.routes import router as catalog_router
 from app.api.v1.dashboard.routes import router as dashboard_router
 from app.api.v1.documents.routes import router as documents_router
+from app.api.v1.cred.routes import router as cred_router
 from app.api.v1.encounters.routes import router as encounters_router
 from app.api.v1.inventory.routes import router as inventory_router
 from app.api.v1.notifications.routes import router as notifications_router
@@ -37,6 +38,7 @@ api_router.include_router(patients_router)
 api_router.include_router(practitioners_router)
 api_router.include_router(appointments_router)
 api_router.include_router(encounters_router)
+api_router.include_router(cred_router)
 api_router.include_router(studies_router)
 api_router.include_router(documents_router)
 api_router.include_router(reminders_router)

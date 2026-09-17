@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useId, useRef, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 
+import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/utils'
 
 type ModalSize = 'sm' | 'md' | 'lg' | 'xl'
@@ -44,6 +45,16 @@ interface ModalProps {
   size?: ModalSize
   /** Acciones fijas al pie: permanecen visibles aunque el contenido se desplace. */
   footer?: ReactNode
+  /**
+   * Hay trabajo sin guardar dentro del diálogo.
+   *
+   * Un clic fuera del panel o un Escape cierran el modal sin avisar, y en un
+   * formulario largo —una atención, una ficha clínica— eso borra de golpe lo
+   * que el profesional acababa de escribir. Con `dirty` activo esas dos vías y
+   * la X piden confirmación; el botón de cancelar no, porque pulsarlo ya es
+   * decir que se descarta.
+   */
+  dirty?: boolean
   children: ReactNode
 }
 
@@ -54,6 +65,7 @@ export function Modal({
   description,
   size = 'md',
   footer,
+  dirty = false,
   children,
 }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null)
@@ -61,11 +73,20 @@ export function Modal({
   // sobre el fondo (por ejemplo, al seleccionar texto de un campo).
   const pressedBackdrop = useRef(false)
   const titleId = useId()
+  const [confirming, setConfirming] = useState(false)
+
+  const requestClose = useCallback(() => {
+    if (dirty) setConfirming(true)
+    else onClose()
+  }, [dirty, onClose])
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        onClose()
+        // Con la confirmación a la vista, Escape vuelve al formulario en lugar
+        // de descartarlo: es la tecla que se pulsa por reflejo.
+        if (confirming) setConfirming(false)
+        else requestClose()
         return
       }
       if (event.key !== 'Tab') return
@@ -90,23 +111,34 @@ export function Modal({
         first.focus()
       }
     },
-    [onClose],
+    [confirming, requestClose],
   )
 
+  useEffect(() => {
+    if (!open) setConfirming(false)
+  }, [open])
+
+  /* El bloqueo del scroll y el foco dependen solo de que el diálogo esté
+     abierto. Van aparte del listener de teclado, que cambia cada vez que
+     aparece la confirmación: si compartieran efecto, al mostrarla se liberaría
+     el scroll y el foco saltaría al elemento de detrás. */
   useEffect(() => {
     if (!open) return
 
     lockBodyScroll()
-    document.addEventListener('keydown', handleKeyDown)
-
     const previouslyFocused = document.activeElement as HTMLElement | null
     panelRef.current?.focus({ preventScroll: true })
 
     return () => {
-      document.removeEventListener('keydown', handleKeyDown)
       unlockBodyScroll()
       previouslyFocused?.focus?.({ preventScroll: true })
     }
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
   }, [open, handleKeyDown])
 
   if (!open) return null
@@ -120,7 +152,7 @@ export function Modal({
           pressedBackdrop.current = true
         }}
         onMouseUp={() => {
-          if (pressedBackdrop.current) onClose()
+          if (pressedBackdrop.current) requestClose()
           pressedBackdrop.current = false
         }}
       />
@@ -154,7 +186,7 @@ export function Modal({
             </div>
             <button
               type="button"
-              onClick={onClose}
+              onClick={requestClose}
               aria-label="Cerrar"
               className="shrink-0 rounded-lg p-1.5 text-muted transition-colors hover:bg-primary/10 hover:text-primary-dark"
             >
@@ -170,6 +202,37 @@ export function Modal({
         {footer && (
           <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-border px-5 py-3.5">
             {footer}
+          </div>
+        )}
+
+        {confirming && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-surface/80 p-5 backdrop-blur-[1px]">
+            <div className="w-full max-w-sm rounded-xl border border-border bg-surface p-5 shadow-popover">
+              <h3 className="text-sm font-semibold text-foreground">¿Descartar lo escrito?</h3>
+              <p className="mt-1.5 text-sm text-muted">
+                Se perderá lo que anotó y no se guardará nada.
+              </p>
+              <div className="mt-4 flex flex-wrap justify-end gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  autoFocus
+                  onClick={() => setConfirming(false)}
+                >
+                  Seguir editando
+                </Button>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  onClick={() => {
+                    setConfirming(false)
+                    onClose()
+                  }}
+                >
+                  Descartar
+                </Button>
+              </div>
+            </div>
           </div>
         )}
       </div>

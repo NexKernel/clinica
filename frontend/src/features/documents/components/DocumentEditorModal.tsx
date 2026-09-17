@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Eye, Save, Stamp } from 'lucide-react'
 
 import {
@@ -68,13 +68,19 @@ export function DocumentEditorModal({
   const [encounterId, setEncounterId] = useState('')
   const [studyId, setStudyId] = useState('')
   const [invalidKeys, setInvalidKeys] = useState<string[]>([])
+  // Instantánea de los campos al abrir el borrador: lo que difiera es trabajo
+  // sin guardar. Los vínculos (profesional, atención, estudio) no entran: los
+  // rellena el sistema y volver a elegirlos cuesta un clic.
+  const baseline = useRef('')
   const [feedback, setFeedback] = useState<{ tone: 'success' | 'danger'; text: string } | null>(
     null,
   )
 
   useEffect(() => {
     if (!open || !document) return
-    setValues(toFieldValues(document.fields, document.data))
+    const iniciales = toFieldValues(document.fields, document.data)
+    setValues(iniciales)
+    baseline.current = JSON.stringify(iniciales)
     setPractitionerId(document.practitioner_id ? String(document.practitioner_id) : '')
     setEncounterId(document.encounter_id ? String(document.encounter_id) : '')
     setStudyId(document.study_id ? String(document.study_id) : '')
@@ -92,6 +98,7 @@ export function DocumentEditorModal({
   }, [open, document, ownPractitionerId])
 
   const isEditable = document?.is_draft ?? false
+  const dirty = isEditable && JSON.stringify(values) !== baseline.current
   const isBusy = update.isPending || issue.isPending
 
   const practitionerOptions: SelectOption[] = useMemo(
@@ -176,6 +183,7 @@ export function DocumentEditorModal({
     <Modal
       open={open}
       onClose={onClose}
+      dirty={dirty}
       title={document ? document.title : 'Documento'}
       description={document ? `${document.number} · ${document.patient_name}` : 'Cargando documento'}
       size="xl"

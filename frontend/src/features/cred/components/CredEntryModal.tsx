@@ -91,6 +91,7 @@ export function CredEntryModal({ open, patientId, onClose }: CredEntryModalProps
     <Modal
       open={open}
       onClose={onClose}
+      dirty={Boolean(itemCode || result.trim() || notes.trim())}
       title="Registrar prestación del carné"
       description="Anote lo aplicado: vacuna, control, tamizaje, suplemento o sesión"
       footer={

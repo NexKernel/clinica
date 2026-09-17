@@ -1,4 +1,4 @@
-import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import { Save, type LucideIcon } from 'lucide-react'
 import { HeartPulse, IdCard, MapPin, Phone } from 'lucide-react'
 
@@ -184,6 +184,8 @@ export function PatientFormModal({ open, patient, onClose, onSaved }: PatientFor
   const [errors, setErrors] = useState<FieldErrors>({})
   const [serverError, setServerError] = useState<string | null>(null)
   const [tab, setTab] = useState('identity')
+  // Instantánea de la ficha al abrirla: lo que difiera se perdería al cerrar.
+  const baseline = useRef('')
 
   const { create, update } = usePatientActions()
   const isLoading = create.isPending || update.isPending
@@ -193,7 +195,9 @@ export function PatientFormModal({ open, patient, onClose, onSaved }: PatientFor
     setErrors({})
     setServerError(null)
     setTab('identity')
-    setValues(patient ? fromPatient(patient) : emptyValues())
+    const iniciales = patient ? fromPatient(patient) : emptyValues()
+    setValues(iniciales)
+    baseline.current = JSON.stringify(iniciales)
   }, [open, patient])
 
   const handleChange =
@@ -234,6 +238,7 @@ export function PatientFormModal({ open, patient, onClose, onSaved }: PatientFor
     <Modal
       open={open}
       onClose={onClose}
+      dirty={JSON.stringify(values) !== baseline.current}
       title={isEdit ? 'Editar paciente' : 'Nuevo paciente'}
       description={
         isEdit

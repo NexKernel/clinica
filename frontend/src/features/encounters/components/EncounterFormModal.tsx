@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Activity, ClipboardList, Pill, Plus, Save, Stethoscope, Trash2 } from 'lucide-react'
 
 import {
@@ -61,6 +61,23 @@ interface FormValues {
   oxygen_saturation: string
   weight_kg: string
   height_cm: string
+}
+
+function snapshotOf(
+  patient: PatientSummary | null,
+  service: MedicalService | null,
+  values: FormValues,
+  diagnoses: DiagnosisPayload[],
+  prescriptions: PrescriptionRow[],
+): string {
+  return JSON.stringify([
+    patient?.id ?? null,
+    service?.id ?? null,
+    values,
+    diagnoses,
+    // `product` es apoyo del selector y no viaja al servidor.
+    prescriptions.map(({ product: _product, ...row }) => row),
+  ])
 }
 
 const emptyValues = (): FormValues => ({
@@ -176,6 +193,9 @@ export function EncounterFormModal({
   const [diagnoses, setDiagnoses] = useState<DiagnosisPayload[]>([])
   const [prescriptions, setPrescriptions] = useState<PrescriptionRow[]>([])
   const [formError, setFormError] = useState<string | null>(null)
+  // Instantánea del formulario al abrirlo: lo que difiera de ella es trabajo
+  // que se perdería al cerrar.
+  const baseline = useRef('')
 
   useEffect(() => {
     if (!open) return
@@ -184,9 +204,7 @@ export function EncounterFormModal({
     setService(null)
 
     if (encounter) {
-      setPatient(encounter.patient)
-      setPractitionerId(String(encounter.practitioner_id))
-      setValues({
+      const editValues: FormValues = {
         service_id: encounter.service_id ? String(encounter.service_id) : '',
         chief_complaint: encounter.chief_complaint ?? '',
         current_illness: encounter.current_illness ?? '',
@@ -202,36 +220,50 @@ export function EncounterFormModal({
         oxygen_saturation: encounter.oxygen_saturation?.toString() ?? '',
         weight_kg: encounter.weight_kg ?? '',
         height_cm: encounter.height_cm ?? '',
-      })
-      setDiagnoses(
-        encounter.diagnoses.map((item) => ({
-          code: item.code ?? '',
-          description: item.description,
-          kind: item.kind,
-        })),
-      )
-      setPrescriptions(
-        encounter.prescriptions.map((item) => ({
-          product_id: item.product_id,
-          product: null,
-          medication: item.medication,
-          dose: item.dose ?? '',
-          frequency_hours: item.frequency_hours,
-          frequency_text: item.frequency_text ?? '',
-          duration_days: item.duration_days,
-          quantity: item.quantity,
-          instructions: item.instructions ?? '',
-        })),
+      }
+      const editDiagnoses = encounter.diagnoses.map((item) => ({
+        code: item.code ?? '',
+        description: item.description,
+        kind: item.kind,
+      }))
+      const editPrescriptions = encounter.prescriptions.map((item) => ({
+        product_id: item.product_id,
+        product: null,
+        medication: item.medication,
+        dose: item.dose ?? '',
+        frequency_hours: item.frequency_hours,
+        frequency_text: item.frequency_text ?? '',
+        duration_days: item.duration_days,
+        quantity: item.quantity,
+        instructions: item.instructions ?? '',
+      }))
+
+      setPatient(encounter.patient)
+      setPractitionerId(String(encounter.practitioner_id))
+      setValues(editValues)
+      setDiagnoses(editDiagnoses)
+      setPrescriptions(editPrescriptions)
+      baseline.current = snapshotOf(
+        encounter.patient,
+        null,
+        editValues,
+        editDiagnoses,
+        editPrescriptions,
       )
       return
     }
 
+    const nuevo = emptyValues()
     setPatient(initialPatient)
     setPractitionerId(initialPractitionerId ? String(initialPractitionerId) : '')
-    setValues(emptyValues())
+    setValues(nuevo)
     setDiagnoses([])
     setPrescriptions([])
+    baseline.current = snapshotOf(initialPatient, null, nuevo, [], [])
   }, [open, encounter, initialPatient, initialPractitionerId])
+
+  const dirty =
+    !isReadOnly && snapshotOf(patient, service, values, diagnoses, prescriptions) !== baseline.current
 
   /* La lista de profesionales llega después del primer render, así que la
      ficha propia se rellena en un efecto aparte: meterla en el de reinicio lo
@@ -380,6 +412,7 @@ export function EncounterFormModal({
     <Modal
       open={open}
       onClose={onClose}
+      dirty={dirty}
       title={isEdit ? 'Atención médica' : 'Nueva atención'}
       description={
         isEdit

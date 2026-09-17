@@ -26,6 +26,7 @@ class UserRead(UserBase):
     id: int
     role: str
     role_name: str
+    practitioner_id: int | None = None
     created_at: LocalDatetime
     updated_at: LocalDatetime
 

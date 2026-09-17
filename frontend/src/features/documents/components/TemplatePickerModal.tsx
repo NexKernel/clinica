@@ -6,6 +6,7 @@ import { useDocumentActions, useDocumentTemplates } from '@/features/documents/h
 import { useActivePractitioners } from '@/features/catalog/hooks/useCatalog'
 import { PatientPicker } from '@/features/patients/components/PatientPicker'
 import { cn } from '@/lib/utils'
+import { useOwnPractitionerId } from '@/hooks/useOwnPractitioner'
 import { getErrorMessage } from '@/services/http'
 import {
   DOCUMENT_FAMILIES,
@@ -39,6 +40,7 @@ export function TemplatePickerModal({
 }: TemplatePickerModalProps) {
   const { templates, isLoading, error } = useDocumentTemplates()
   const { practitioners } = useActivePractitioners()
+  const ownPractitionerId = useOwnPractitionerId(practitioners)
   const { create } = useDocumentActions()
 
   const [patient, setPatient] = useState<PatientSummary | null>(initialPatient)
@@ -57,6 +59,15 @@ export function TemplatePickerModal({
     setSelected(null)
     setFormError(null)
   }, [open, initialPatient])
+
+  /* La lista de profesionales llega después del primer render, así que la
+     ficha propia se rellena en un efecto aparte: meterla en el de reinicio lo
+     haría dispararse otra vez al cargar y borraría lo ya escrito. Solo actúa
+     sobre un campo vacío, para no pisar una elección deliberada. */
+  useEffect(() => {
+    if (!open || !ownPractitionerId) return
+    setPractitionerId((actual) => actual || String(ownPractitionerId))
+  }, [open, ownPractitionerId])
 
   const visible = useMemo(() => {
     const term = normalize(search.trim())

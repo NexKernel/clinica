@@ -18,6 +18,8 @@ export interface User {
   full_name: string
   role: Role
   role_name: string
+  /** Ficha con la que firma sus atenciones; null si el perfil no atiende. */
+  practitioner_id: number | null
   is_active: boolean
   created_at: string
   updated_at: string

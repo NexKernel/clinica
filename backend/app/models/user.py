@@ -1,8 +1,13 @@
 from sqlalchemy import Boolean, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from typing import TYPE_CHECKING
+
 from app.db.base import Base, TimestampMixin
 from app.models.role import Role
+
+if TYPE_CHECKING:
+    from app.models.practitioner import Practitioner
 
 
 class User(Base, TimestampMixin):
@@ -22,6 +27,16 @@ class User(Base, TimestampMixin):
     )
 
     role_ref: Mapped[Role] = relationship(back_populates="users", lazy="joined")
+    # Ficha de profesional de quien atiende. La crea el alta de usuario para los
+    # perfiles asistenciales; los administrativos no tienen.
+    practitioner_ref: Mapped["Practitioner | None"] = relationship(
+        "Practitioner", lazy="joined", viewonly=True
+    )
+
+    @property
+    def practitioner_id(self) -> int | None:
+        """Con qué ficha firma sus atenciones, o None si no atiende."""
+        return self.practitioner_ref.id if self.practitioner_ref else None
 
     @property
     def role(self) -> str:

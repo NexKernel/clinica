@@ -24,6 +24,7 @@ import { usePatientEncounters } from '@/features/encounters/hooks/useEncounters'
 import { usePatientStudies } from '@/features/studies/hooks/useStudies'
 import { formatDate, formatDateTime } from '@/lib/datetime'
 import { rolesForNavItem } from '@/routes/navigation'
+import { useOwnPractitionerId } from '@/hooks/useOwnPractitioner'
 import { getErrorMessage } from '@/services/http'
 import { hasRole } from '@/store/auth.store'
 import type { ClinicalDocument, DocumentPayload } from '@/types'
@@ -54,6 +55,7 @@ export function DocumentEditorModal({
   const { document, isLoading, error } = useDocument(open ? documentId : null)
   const { update, issue } = useDocumentActions()
   const { practitioners } = useActivePractitioners()
+  const ownPractitionerId = useOwnPractitionerId(practitioners)
   const { user } = useAuth()
 
   const canLinkEncounter = hasRole(user, ENCOUNTER_ROLES)
@@ -79,6 +81,15 @@ export function DocumentEditorModal({
     setInvalidKeys([])
     setFeedback(null)
   }, [open, document])
+
+  /* La lista de profesionales llega después del primer render, así que la
+     ficha propia se rellena en un efecto aparte: meterla en el de reinicio lo
+     haría dispararse otra vez al cargar y borraría lo ya escrito. Solo actúa
+     sobre un campo vacío, para no pisar una elección deliberada. */
+  useEffect(() => {
+    if (!open || !document?.is_draft || !ownPractitionerId) return
+    setPractitionerId((actual) => actual || String(ownPractitionerId))
+  }, [open, document, ownPractitionerId])
 
   const isEditable = document?.is_draft ?? false
   const isBusy = update.isPending || issue.isPending

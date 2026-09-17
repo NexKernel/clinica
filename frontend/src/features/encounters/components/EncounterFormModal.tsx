@@ -19,6 +19,7 @@ import { useEncounterActions } from '@/features/encounters/hooks/useEncounters'
 import { inventoryApi } from '@/features/inventory/api/inventory.api'
 import { ProductPicker } from '@/features/inventory/components/ProductPicker'
 import { PatientPicker } from '@/features/patients/components/PatientPicker'
+import { useOwnPractitionerId } from '@/hooks/useOwnPractitioner'
 import { getErrorMessage } from '@/services/http'
 import {
   DIAGNOSIS_KIND_LABELS,
@@ -162,6 +163,7 @@ export function EncounterFormModal({
   const isClosed = encounter !== null && !encounter.is_editable
   const isReadOnly = !canWrite || isClosed
   const { practitioners } = useActivePractitioners()
+  const ownPractitionerId = useOwnPractitionerId(practitioners)
   const { create, update } = useEncounterActions()
   const isLoading = create.isPending || update.isPending
   const locked = isLoading || isReadOnly
@@ -230,6 +232,15 @@ export function EncounterFormModal({
     setDiagnoses([])
     setPrescriptions([])
   }, [open, encounter, initialPatient, initialPractitionerId])
+
+  /* La lista de profesionales llega después del primer render, así que la
+     ficha propia se rellena en un efecto aparte: meterla en el de reinicio lo
+     haría dispararse otra vez al cargar y borraría lo ya escrito. Solo actúa
+     sobre un campo vacío, para no pisar una elección deliberada. */
+  useEffect(() => {
+    if (!open || encounter || !ownPractitionerId) return
+    setPractitionerId((actual) => actual || String(ownPractitionerId))
+  }, [open, encounter, ownPractitionerId])
 
   /* Las recetas guardan el id del producto, no su ficha: al abrir una atención
      ya registrada se recuperan para que el selector muestre cuál es. */
